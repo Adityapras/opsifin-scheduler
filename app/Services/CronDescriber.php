@@ -5,27 +5,33 @@ namespace App\Services;
 use Cron\CronExpression;
 
 /**
- * Menerjemahkan ekspresi cron ke bahasa Indonesia agar bisa dibaca operator
+ * Menerjemahkan ekspresi cron ke kalimat biasa agar bisa dibaca operator
  * non-teknis. Menangani pola yang benar-benar dipakai di crontab Opsifin;
  * pola di luar itu jatuh ke deskripsi per-field yang tetap informatif.
  */
 class CronDescriber
 {
     private const DAYS = [
-        0 => 'Minggu', 1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu',
-        4 => 'Kamis', 5 => 'Jumat', 6 => 'Sabtu', 7 => 'Minggu',
+        0 => 'Sunday', 1 => 'Monday', 2 => 'Tuesday', 3 => 'Wednesday',
+        4 => 'Thursday', 5 => 'Friday', 6 => 'Saturday', 7 => 'Sunday',
+    ];
+
+    private const MONTHS = [
+        1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+        5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+        9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
     ];
 
     public function describe(string $expression): string
     {
         if (! CronExpression::isValidExpression($expression)) {
-            return 'Ekspresi tidak valid.';
+            return 'Invalid expression.';
         }
 
         $fields = preg_split('/\s+/', trim($expression)) ?: [];
 
         if (count($fields) !== 5) {
-            return 'Ekspresi tidak dikenali.';
+            return 'Unrecognised expression.';
         }
 
         [$minute, $hour, $dayOfMonth, $month, $dayOfWeek] = $fields;
@@ -33,15 +39,15 @@ class CronDescriber
         $parts = [$this->describeTime($minute, $hour)];
 
         if ($dayOfMonth !== '*') {
-            $parts[] = 'pada tanggal '.$this->humanList($dayOfMonth);
+            $parts[] = 'on day '.$this->humanList($dayOfMonth);
         }
 
         if ($month !== '*') {
-            $parts[] = 'di bulan '.$this->humanList($month);
+            $parts[] = 'in '.$this->describeMonth($month);
         }
 
         if ($dayOfWeek !== '*') {
-            $parts[] = 'setiap '.$this->describeDayOfWeek($dayOfWeek);
+            $parts[] = 'on '.$this->describeDayOfWeek($dayOfWeek);
         }
 
         return ucfirst(implode(', ', $parts)).'.';
@@ -65,8 +71,8 @@ class CronDescriber
         }
 
         return sprintf(
-            'Jeda tidak seragam: berjalan di menit %s, jadi selisihnya %d menit lalu %d menit — '.
-            'bukan "setiap %d menit".',
+            'Uneven interval: it runs at minutes %s, so the gap is %d minutes and then %d minutes — '.
+            'not "every %d minutes".',
             implode(', ', range(0, 59, $step)),
             $step,
             60 % $step,
@@ -77,44 +83,55 @@ class CronDescriber
     private function describeTime(string $minute, string $hour): string
     {
         if ($minute === '*' && $hour === '*') {
-            return 'setiap menit';
+            return 'every minute';
         }
 
         if (preg_match('#^\*/(\d+)$#', $minute, $m)) {
-            $every = 'setiap '.$m[1].' menit';
+            $every = 'every '.$this->pluralise((int) $m[1], 'minute');
 
-            return $hour === '*' ? $every : $every.' pada jam '.$this->humanList($hour);
+            return $hour === '*' ? $every : $every.' during hour '.$this->humanList($hour);
         }
 
         if ($hour === '*') {
-            return 'setiap jam pada menit '.$this->humanList($minute);
+            return 'every hour at minute '.$this->humanList($minute);
         }
 
         if (preg_match('#^\*/(\d+)$#', $hour, $m)) {
-            return 'setiap '.$m[1].' jam pada menit '.$this->humanList($minute);
+            return 'every '.$this->pluralise((int) $m[1], 'hour').' at minute '.$this->humanList($minute);
         }
 
         // Kasus paling umum: jam & menit tunggal.
         if (ctype_digit($minute) && ctype_digit($hour)) {
-            return sprintf('setiap hari pukul %02d:%02d', (int) $hour, (int) $minute);
+            return sprintf('every day at %02d:%02d', (int) $hour, (int) $minute);
         }
 
-        return 'pada jam '.$this->humanList($hour).' menit '.$this->humanList($minute);
+        return 'at hour '.$this->humanList($hour).', minute '.$this->humanList($minute);
     }
 
     private function describeDayOfWeek(string $field): string
     {
-        $names = array_map(
+        return $this->joinWithAnd(array_map(
             fn (string $value) => self::DAYS[(int) $value] ?? $value,
             $this->expand($field),
-        );
+        ));
+    }
 
-        return $this->joinWithDan($names);
+    private function describeMonth(string $field): string
+    {
+        return $this->joinWithAnd(array_map(
+            fn (string $value) => ctype_digit($value) ? (self::MONTHS[(int) $value] ?? $value) : $value,
+            $this->expand($field),
+        ));
     }
 
     private function humanList(string $field): string
     {
-        return $this->joinWithDan($this->expand($field));
+        return $this->joinWithAnd($this->expand($field));
+    }
+
+    private function pluralise(int $count, string $noun): string
+    {
+        return $count === 1 ? $noun : $count.' '.$noun.'s';
     }
 
     /**
@@ -140,7 +157,7 @@ class CronDescriber
     /**
      * @param  array<int, string>  $items
      */
-    private function joinWithDan(array $items): string
+    private function joinWithAnd(array $items): string
     {
         if (count($items) <= 1) {
             return $items[0] ?? '';
@@ -148,6 +165,6 @@ class CronDescriber
 
         $last = array_pop($items);
 
-        return implode(', ', $items).' dan '.$last;
+        return implode(', ', $items).' and '.$last;
     }
 }

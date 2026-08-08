@@ -165,20 +165,20 @@ class CurlParser
         }
 
         if ($url === null) {
-            $problems[] = 'URL tidak ditemukan pada perintah curl.';
+            $problems[] = 'No URL found in the curl command.';
         }
 
         if ($method === null) {
             $method = $body !== null ? 'POST' : 'GET';
-            $problems[] = 'Method tidak eksplisit (-X), disimpulkan sebagai '.$method.'.';
+            $problems[] = 'Method is not explicit (-X), inferred as '.$method.'.';
         }
 
         if ($maxTime === null) {
-            $problems[] = 'Tidak ada --max-time.';
+            $problems[] = 'No --max-time.';
         }
 
         if ($connectTimeout === null) {
-            $problems[] = 'Tidak ada --connect-timeout.';
+            $problems[] = 'No --connect-timeout.';
         }
 
         $parts = $url ? parse_url($url) : [];

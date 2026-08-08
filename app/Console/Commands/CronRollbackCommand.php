@@ -9,11 +9,11 @@ use Throwable;
 class CronRollbackCommand extends Command
 {
     protected $signature = 'cron:rollback
-        {--backup= : Path file backup tertentu (default: yang terbaru)}
-        {--output= : Kembalikan ke path ini alih-alih file cron.d sebenarnya}
-        {--list : Tampilkan daftar backup yang tersedia}';
+        {--backup= : Path of a specific backup file (default: the most recent)}
+        {--output= : Restore to this path instead of the real cron.d file}
+        {--list : List the available backups}';
 
-    protected $description = 'Kembalikan file cron.d ke versi backup sebelumnya';
+    protected $description = 'Restore the cron.d file to a previous backup';
 
     public function handle(CrontabDeployer $deployer): int
     {
@@ -21,12 +21,12 @@ class CronRollbackCommand extends Command
 
         if ($this->option('list')) {
             if ($backups === []) {
-                $this->warn('Belum ada backup.');
+                $this->warn('No backups yet.');
 
                 return self::SUCCESS;
             }
 
-            $this->table(['Backup', 'Ukuran', 'Waktu'], array_map(fn ($f) => [
+            $this->table(['Backup', 'Size', 'Time'], array_map(fn ($f) => [
                 basename($f),
                 filesize($f).' B',
                 date('Y-m-d H:i:s', filemtime($f)),
@@ -46,8 +46,8 @@ class CronRollbackCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info('Dikembalikan: '.$result['path']);
-        $this->line('Dari backup : '.$result['restored_from']);
+        $this->info('Restored  : '.$result['path']);
+        $this->line('From backup: '.$result['restored_from']);
 
         return self::SUCCESS;
     }

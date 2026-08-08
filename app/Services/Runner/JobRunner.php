@@ -6,6 +6,7 @@ use App\Enums\RunStatus;
 use App\Enums\RunTrigger;
 use App\Models\Run;
 use App\Models\Schedule;
+use App\Services\Alerting\AlertEvaluator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -28,13 +29,13 @@ class JobRunner
 
         if (! $schedule->is_enabled && $trigger === RunTrigger::Cron) {
             return $this->record($schedule, $trigger, RunStatus::SkippedDisabled, [
-                'error_message' => 'Schedule dinonaktifkan.',
+                'error_message' => 'The schedule is disabled.',
             ]);
         }
 
         if (! $schedule->client->is_active && $trigger === RunTrigger::Cron) {
             return $this->record($schedule, $trigger, RunStatus::SkippedDisabled, [
-                'error_message' => "Client '{$schedule->client->code}' dinonaktifkan.",
+                'error_message' => "Client '{$schedule->client->code}' is inactive.",
             ]);
         }
 
@@ -44,7 +45,7 @@ class JobRunner
             return $this->record($schedule, RunTrigger::DryRun, RunStatus::Success, [
                 'request_method' => $request['method']->value,
                 'request_url' => $request['url'],
-                'response_excerpt' => $this->describeDryRun($request),
+                'response_excerpt' => $this->describeRequest($request),
                 'duration_ms' => 0,
                 'finished_at' => now(),
             ]);
@@ -56,7 +57,7 @@ class JobRunner
             return $this->record($schedule, $trigger, RunStatus::SkippedLock, [
                 'request_method' => $request['method']->value,
                 'request_url' => $request['url'],
-                'error_message' => 'Eksekusi sebelumnya masih berjalan (lock: '.$schedule->lock_key.').',
+                'error_message' => 'The previous execution is still running (lock: '.$schedule->lock_key.').',
             ]);
         }
 
@@ -127,6 +128,14 @@ class JobRunner
         $schedule->recalculateNextRun();
         $schedule->saveQuietly();
 
+        // Alerting tidak boleh menjatuhkan eksekusi job: hasil run sudah
+        // tersimpan di atas, jadi kegagalan di sini hanya dicatat ke log.
+        try {
+            app(AlertEvaluator::class)->evaluateRun($run);
+        } catch (Throwable $e) {
+            report($e);
+        }
+
         return $run;
     }
 
@@ -151,19 +160,26 @@ class JobRunner
     /**
      * Ringkasan request yang akan dikirim — dipakai tombol "Dry run" di UI.
      *
+     * Kredensial disamarkan secara default karena hasil dry run ikut tersimpan
+     * di `runs.response_excerpt`, yang bisa dibaca semua user aktif dan bertahan
+     * selama masa retensi. Pemanggil yang berhak boleh meminta nilai aslinya
+     * untuk ditampilkan tanpa ikut disimpan.
+     *
      * @param  array<string, mixed>  $request
      */
-    private function describeDryRun(array $request): string
+    public function describeRequest(array $request, bool $maskSecrets = true): string
     {
-        $lines = ['(dry run — request tidak dikirim)', ''];
+        $lines = ['(dry run — the request is not sent)', ''];
         $lines[] = $request['method']->value.' '.$request['url'];
 
-        foreach ($this->maskHeaders($request['headers']) as $name => $value) {
+        $headers = $maskSecrets ? $this->maskHeaders($request['headers']) : $request['headers'];
+
+        foreach ($headers as $name => $value) {
             $lines[] = $name.': '.$value;
         }
 
         $lines[] = '';
-        $lines[] = $request['body'] ?? '(tanpa body)';
+        $lines[] = $request['body'] ?? '(no body)';
         $lines[] = '';
         $lines[] = sprintf('timeout=%ds connect_timeout=%ds retries=%d',
             $request['timeout'], $request['connect_timeout'], $request['retries']);
@@ -182,7 +198,7 @@ class JobRunner
 
         foreach ($headers as $name => $value) {
             $masked[$name] = in_array(strtolower($name), $secret, true)
-                ? Str::limit($value, 12, '… (disamarkan)')
+                ? Str::limit($value, 12, '… (masked)')
                 : $value;
         }
 

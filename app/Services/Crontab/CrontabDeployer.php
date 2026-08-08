@@ -86,13 +86,13 @@ class CrontabDeployer
         $directory = dirname($path);
 
         if (! is_dir($directory)) {
-            throw new RuntimeException("Direktori tujuan tidak ada: {$directory}");
+            throw new RuntimeException("Target directory does not exist: {$directory}");
         }
 
         if (! is_writable(is_file($path) ? $path : $directory)) {
             throw new RuntimeException(
-                "Tidak punya izin menulis ke {$path}. Jalankan sebagai user yang berhak, ".
-                'atau pakai --output untuk menulis ke lokasi staging.'
+                "No permission to write to {$path}. Run as a user that has it, ".
+                'or use --output to write to a staging location.'
             );
         }
 
@@ -139,7 +139,7 @@ class CrontabDeployer
         $backup ??= $this->backups()[0] ?? null;
 
         if ($backup === null || ! is_file($backup)) {
-            throw new RuntimeException('Tidak ada backup crontab yang bisa dikembalikan.');
+            throw new RuntimeException('There is no crontab backup to restore.');
         }
 
         // Baca isi backup lebih dulu: mem-backup file saat ini bisa menimpa

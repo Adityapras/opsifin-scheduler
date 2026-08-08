@@ -35,7 +35,7 @@ class JobLock
         $handle = @fopen($lock->path, 'c');
 
         if ($handle === false) {
-            throw new RuntimeException("Tidak bisa membuka lock file: {$lock->path}");
+            throw new RuntimeException("Cannot open lock file: {$lock->path}");
         }
 
         $lock->handle = $handle;
@@ -89,7 +89,7 @@ class JobLock
 
         if (! @mkdir($directory, 0775, true) && ! is_dir($directory)) {
             throw new RuntimeException(
-                "Direktori lock tidak bisa dibuat: {$directory}. Sesuaikan CRON_LOCK_DIR di .env."
+                "Cannot create the lock directory: {$directory}. Adjust CRON_LOCK_DIR in .env."
             );
         }
     }

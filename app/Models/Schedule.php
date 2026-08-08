@@ -137,10 +137,37 @@ class Schedule extends Model
         );
     }
 
+    /**
+     * Jadwal terakhir yang seharusnya sudah lewat. Dipakai deteksi missed run:
+     * kalau waktu ini sudah terlampaui tapi tidak ada run yang tercatat,
+     * berarti cron-nya yang tidak jalan, bukan job-nya yang gagal.
+     */
+    public function previousRun(): ?Carbon
+    {
+        if (! $this->isValidCron()) {
+            return null;
+        }
+
+        $tz = $this->timezone ?: config('app.timezone');
+        $cron = new CronExpression($this->cron_expression);
+
+        return Carbon::instance($cron->getPreviousRunDate(Carbon::now($tz), 0, true, $tz))
+            ->setTimezone($tz);
+    }
+
+    /**
+     * Kolom next_run_at menyimpan instan dalam timezone aplikasi.
+     *
+     * nextRuns() mengembalikan Carbon yang sudah digeser ke timezone schedule,
+     * sedangkan cast `datetime` menulis jam dindingnya apa adanya tanpa konversi
+     * — tanpa penyesuaian di bawah, 21:00 WIB tersimpan sebagai "21:00" lalu
+     * dibaca kembali sebagai 21:00 UTC dan tampil sebagai 04:00 WIB.
+     */
     public function recalculateNextRun(): void
     {
-        $next = $this->nextRuns(1);
-        $this->next_run_at = $next[0] ?? null;
+        $next = $this->nextRuns(1)[0] ?? null;
+
+        $this->next_run_at = $next?->setTimezone(config('app.timezone'));
     }
 
     /**

@@ -14,12 +14,12 @@ enum RunStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::Running => 'Berjalan',
-            self::Success => 'Sukses',
-            self::Failed => 'Gagal',
+            self::Running => 'Running',
+            self::Success => 'Success',
+            self::Failed => 'Failed',
             self::Timeout => 'Timeout',
-            self::SkippedLock => 'Dilewati (lock)',
-            self::SkippedDisabled => 'Dilewati (nonaktif)',
+            self::SkippedLock => 'Skipped (lock)',
+            self::SkippedDisabled => 'Skipped (disabled)',
         };
     }
 

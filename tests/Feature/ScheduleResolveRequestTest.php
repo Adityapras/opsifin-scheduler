@@ -134,4 +134,24 @@ class ScheduleResolveRequestTest extends TestCase
         $this->assertSame('Asia/Jakarta', $runs[0]->timezone->getName());
         $this->assertSame(0, $runs[0]->minute % 6);
     }
+
+    /**
+     * Cast `datetime` menulis jam dinding Carbon apa adanya. Kalau next_run_at
+     * disimpan masih dalam timezone schedule, nilainya terbaca kembali sebagai
+     * jam UTC dan tampil bergeser sebesar offset timezone.
+     */
+    public function test_next_run_survives_a_round_trip_through_the_database(): void
+    {
+        $schedule = $this->makeSchedule();
+        $schedule->cron_expression = '0 21 * * *';
+        $schedule->recalculateNextRun();
+        $schedule->save();
+
+        $stored = $schedule->fresh();
+
+        $this->assertSame(
+            '21:00',
+            $stored->next_run_at->setTimezone($stored->timezone)->format('H:i'),
+        );
+    }
 }

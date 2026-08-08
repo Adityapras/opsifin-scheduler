@@ -1,11 +1,51 @@
 # Opsifin Cron
 
-Aplikasi pengelola cron job Opsifin — menggantikan 478 file `.sh` dan 26 `.conf`
-dengan database sebagai *source of truth*. Rencana lengkap ada di
-[`PLAN_CRON_UI_REFACTOR.md`](PLAN_CRON_UI_REFACTOR.md).
+Aplikasi pengelola cron job Opsifin. Menggantikan 478 file `.sh` dan 26 `.conf`
+dengan **database sebagai satu-satunya sumber kebenaran** — sementara **cron OS
+tetap yang mengeksekusi**, sehingga risiko migrasinya rendah dan rollback-nya
+satu perintah.
 
-**Status: Fase 1–3 selesai** — fondasi + importer legacy, runner & render crontab,
-serta UI operasional. Berikutnya Fase 4 (alerting & observability).
+```
+  DATABASE  ──render──►  /etc/cron.d/opsifin  ──trigger──►  cron daemon
+     ▲                                                          │
+     └────────────── php artisan cron:run <id> ◄────────────────┘
+```
+
+---
+
+## Mulai dari mana
+
+| Kalau Anda ingin… | Baca |
+| --- | --- |
+| Memahami cara kerjanya | [`docs/architecture.md`](docs/architecture.md) |
+| Memasang di VPS dari nol | [`docs/installation.md`](docs/installation.md) |
+| Memakai panel adminnya | [`docs/user-guide.md`](docs/user-guide.md) |
+| Memindahkan client dari crontab lama | [`docs/cutover.md`](docs/cutover.md) |
+| Menangani incident / pemeliharaan | [`docs/operations.md`](docs/operations.md) |
+| Mencari perintah, kolom, atau konfigurasi | [`docs/reference.md`](docs/reference.md) |
+| Melihat rencana & audit aslinya | [`PLAN_CRON_UI_REFACTOR.md`](PLAN_CRON_UI_REFACTOR.md) |
+| **Membaca usulan arsitektur berikutnya** | [`docs/architecture-v2.md`](docs/architecture-v2.md) |
+
+---
+
+## Status
+
+| Fase | Isi | Status |
+| --- | --- | --- |
+| 0 | Stabilisasi darurat crontab produksi | **belum dikerjakan** |
+| 1 | Fondasi aplikasi + importer legacy | selesai |
+| 2 | Runner & render crontab | selesai |
+| 3 | UI operasional | selesai |
+| 4 | Alerting & observability | selesai |
+| 5 | Migrasi & pembersihan | perkakas & dokumen siap, eksekusi belum |
+
+90 test lolos. Dua hal yang sengaja belum ada:
+
+- **Channel alert keluar.** Alert mengendap di tabel `alerts` dan lonceng
+  notifikasi. Titik tambahnya sudah disiapkan di `AlertDispatcher::deliver()`.
+- **Pemantau di luar server** (mis. Healthchecks.io). `cron:check-missed`
+  mendeteksi cron mati, tapi berjalan di dalam VPS yang sama — kalau seluruh VPS
+  mati, tidak ada yang melapor.
 
 ---
 
@@ -13,10 +53,12 @@ serta UI operasional. Berikutnya Fase 4 (alerting & observability).
 
 | Komponen | Versi |
 | --- | --- |
-| PHP | 8.5 (Laravel Herd) |
+| PHP | 8.3+ |
 | Laravel | 13.x |
 | Filament | 5.x |
-| MySQL | 8.0 (Docker, port 3308) |
+| MySQL | 8.0 |
+
+---
 
 ## Setup lokal (Laravel Herd)
 
@@ -31,107 +73,82 @@ composer install
 cp .env.example .env && php artisan key:generate
 # isi CRON_SOURCE_PATH di .env dengan folder repo cron legacy
 
-# 3. Skema & user
+# 3. Skema & user contoh
 php artisan migrate --seed
 
-# 4. Serve
+# 4. Asset — wajib, theme Filament di-compile dari app/Filament dan resources/views/filament
+npm install && npm run build
+
+# 5. Serve
 herd link opsifin-crontab   # http://opsifin-crontab.test/admin
 ```
 
-User seed (`database/seeders/UserSeeder.php`), password semuanya `password`:
+User seed (`database/seeders/UserSeeder.php`), password semuanya `password` —
+**jangan dipakai di produksi**:
 
-| Email | Role | Kewenangan |
-| --- | --- | --- |
-| `admin@opsifin.local` | admin | CRUD data master + deploy crontab |
-| `operator@opsifin.local` | operator | enable/disable schedule + run manual |
-| `viewer@opsifin.local` | viewer | baca saja |
+| Email | Role |
+| --- | --- |
+| `admin@opsifin.local` | admin |
+| `operator@opsifin.local` | operator |
+| `viewer@opsifin.local` | viewer |
 
-## Perintah
+---
+
+## Perintah yang paling sering dipakai
 
 ```bash
-# Impor & verifikasi (Fase 1)
-php artisan cron:import --dry-run     # parse & laporkan, tanpa menulis DB
-php artisan cron:import --fresh       # impor ulang dari nol
-php artisan cron:import --report=path # tentukan lokasi laporan rekonsiliasi
-php artisan cron:verify-import        # bandingkan hasil impor dengan script legacy
+# Impor legacy
+php artisan cron:import --dry-run      # parse & laporkan, tanpa menulis DB
+php artisan cron:verify-import         # bandingkan hasil impor dengan script asli
 
-# Eksekusi (Fase 2)
-php artisan cron:run 142              # jalankan satu schedule
-php artisan cron:run gn/repost        # boleh juga pakai <client>/<task>
+# Eksekusi
 php artisan cron:run gn/repost --dry-run   # tampilkan request tanpa mengirim
+php artisan cron:run gn/repost             # jalankan sekarang
 
-# Render & deploy crontab (Fase 2)
-php artisan cron:render --validate    # cek semua schedule aktif
-php artisan cron:render               # tulis staging + tampilkan diff
-php artisan cron:render --apply       # deploy ke cron.d (backup otomatis)
-php artisan cron:render --output=/tmp/x.cron --apply   # deploy ke path lain
-php artisan cron:rollback --list      # daftar backup
-php artisan cron:rollback             # kembalikan ke backup terakhir
+# Render & deploy
+php artisan cron:render --validate     # cek semua schedule aktif
+sudo php artisan cron:render --apply    # deploy ke cron.d (backup otomatis)
+sudo php artisan cron:rollback          # kembalikan ke backup terakhir
+
+# Migrasi & pemeliharaan
+php artisan cron:cutover-status         # kesiapan cutover per client
+php artisan cron:check-missed           # cari job yang seharusnya jalan tapi tidak
+php artisan cron:purge-runs --dry-run   # lihat berapa baris yang akan dibersihkan
 ```
 
-Laporan rekonsiliasi default ditulis ke `storage/app/import-reports/`,
-backup crontab ke `storage/app/crontab-backups/`.
+Daftar lengkap beserta opsinya ada di
+[`docs/reference.md`](docs/reference.md) §1.
+
+---
 
 ## Panel admin
 
 | Halaman | Isi |
 | --- | --- |
-| **Matrix** | Grid client × task, satu klik untuk menyalakan/mematikan, plus aktifkan/matikan satu baris atau satu kolom sekaligus |
-| **Schedules** | Cron builder dengan terjemahan bahasa Indonesia + preview 5 jadwal berikutnya, `Run now`, `Dry run`, bulk enable/disable |
-| **Runs** | Riwayat eksekusi read-only, filter per client/task/status/pemicu/rentang waktu, detail request–response |
-| **Deploy crontab** | Validasi, diff, preview file, tombol deploy & rollback |
+| **Dashboard** | Success rate 24 jam, schedule terlambat, kesehatan per client, task terlambat |
+| **Matrix** | Grid client × task; klik sel untuk menyalakan/mematikan, menu ⋮ untuk satu baris atau satu kolom sekaligus |
+| **Schedules** | Cron builder dengan preview 5 jadwal berikutnya, `Run now`, `Dry run`, bulk enable/disable |
+| **Runs** | Riwayat eksekusi read-only, filter per client/task/status/pemicu/rentang waktu |
+| **Alerts** | Alert yang terbit, dengan alur acknowledge → resolve |
+| **Deploy crontab** | Validasi, diff, preview file, daftar backup |
 | **Clients** | CRUD, tes koneksi, kredensial terenkripsi |
-| **Task templates** | Editor path/method/body/header + preview perintah `curl` yang dihasilkan |
+| **Task templates** | Editor path/method/body/header + preview perintah `curl` |
+| **Alert rules** | Kapan alert berbunyi, dengan cakupan dan cooldown |
 
-## Cara lock bekerja
+---
 
-Ada dua lapis, sengaja memakai file berbeda:
+## Tiga hal yang paling sering menjebak
 
-1. **Baris crontab** dibungkus `flock -n <lock_key>.cron.lock` — mencegah proses
-   PHP menumpuk kalau runner menggantung (mis. MySQL lambat). Murah, tidak butuh
-   bootstrap Laravel.
-2. **Di dalam runner** lock sebenarnya diambil pada `<lock_key>.lock`. Lapis ini
-   yang mencatat status `skipped_lock` ke tabel `runs` sehingga terlihat di UI,
-   dan yang membuat tombol "Run now" ikut menghormati lock.
+1. **Perubahan di panel tidak berlaku sampai crontab di-deploy.** Menekan toggle
+   hanya mengubah baris database.
+2. **Sebuah job berjalan hanya kalau tiga gerbang aktif semua** —
+   `schedules.is_enabled`, `clients.is_active`, dan `task_templates.is_active`.
+3. **Tombol Deploy di panel tidak berfungsi di VPS**, dan itu memang
+   diharapkan — cron menolak file `/etc/cron.d` yang tidak dimiliki root.
+   Penulisan lewat SSH dengan `sudo`. Lihat
+   [`docs/installation.md`](docs/installation.md) §9.2.
 
-Kalau keduanya memakai file yang sama, runner akan bentrok dengan `flock` induknya
-sendiri — karena itu file-nya dipisah.
-
-## Model data
-
-```
-clients ──┬── schedules ──── runs
-          ├── client_task_overrides ──┐
-task_templates ────────────────────────┘
-
-import_runs ──── import_findings      audit_logs
-```
-
-- Kredensial (`auth_secret`, `auth_secret_key`) di-cast `encrypted` — tidak pernah
-  tersimpan plaintext di DB.
-- Setiap schedule wajib punya `lock_key`; `flockArguments()` menghasilkan `-n`
-  (skip) atau `-w <detik>` (antre).
-- Kolom `legacy_*` menyimpan asal-usul tiap baris agar bisa dibandingkan ulang
-  saat shadow run Fase 2.
-- Header per-client memakai placeholder: `{{client.secret_key}}`,
-  `{{client.username}}`, `{{client.code}}` — diisi runner saat eksekusi.
-
-## Cara kerja importer
-
-`php artisan cron:import` membaca `CRON_SOURCE_PATH` (read-only, tidak pernah
-menulis ke repo legacy) lalu:
-
-1. `opsifin_env.sh` + `configs/*.conf` → variabel & kredensial.
-2. `gateway.sh` → tabel routing task; `jobs/*.sh` → definisi endpoint gateway.
-3. Semua `<client>/*.sh` → satu `ParsedCurl` per script.
-4. Script dikelompokkan per nama, lalu grup dengan endpoint identik digabung
-   menjadi `task_templates`. Path/method/body/host yang menyimpang dari mayoritas
-   disimpan sebagai `client_task_overrides`.
-5. `opsifin_crontab` → `schedules`, termasuk baris yang di-comment
-   (`is_enabled = false`, `legacy_was_commented = true`).
-
-Setiap ketidakcocokan tidak ditebak diam-diam melainkan dicatat sebagai
-`import_findings` dan muncul di laporan rekonsiliasi.
+---
 
 ## Hasil impor terakhir
 
@@ -141,24 +158,24 @@ Setiap ketidakcocokan tidak ditebak diam-diam melainkan dicatat sebagai
 | Clients | 40 |
 | Task templates | 27 |
 | Client task overrides | 81 |
-| Schedules | 493 (236 aktif, 257 di-comment) |
+| Schedules | 493 |
 | Verifikasi round-trip cocok persis | 383 dari 391 |
 
-Temuan: 12 error, 81 warning, 42 info — rinciannya di laporan rekonsiliasi.
+Temuan: 12 error, 81 warning, 42 info. Rinciannya di laporan rekonsiliasi
+(`storage/app/import-reports/`). **Client tidak boleh diaktifkan sebelum error
+yang menyangkutnya diselesaikan** — `php artisan cron:cutover-status`
+menunjukkan mana yang masih terblokir.
 
-## Deploy ke server
+---
 
-1. Set `CRON_DEPLOY_BASE_DIR` ke lokasi aplikasi di server (default `/opt/opsifin-cron`),
-   `CRON_PHP_BINARY`, `CRON_DEPLOY_USER`, `CRON_LOCK_DIR`, dan `CRON_LOG_DIR`.
-2. Pastikan direktori lock dan log ada serta writable oleh user cron.
-3. `php artisan cron:render --validate`, lalu `--apply`. File `cron.d` dibaca ulang
-   otomatis oleh daemon cron; tidak perlu reload manual.
+## Kontribusi
 
-Baris manual di luar blok `# BEGIN/END OPSIFIN-CRON MANAGED BLOCK` tidak akan
-tersentuh, sehingga crontab lama boleh hidup berdampingan selama masa migrasi.
+```bash
+./vendor/bin/pint     # format kode
+php artisan test      # 90 test, SQLite in-memory
+npm run build         # setelah mengubah blade atau kelas di app/Filament
+```
 
-## Selanjutnya
-
-Fase 4 — alert rule engine (on_failure, on_timeout, N gagal berturut-turut,
-missed run), channel Slack/email, dead man's switch, dashboard, dan purge
-tabel `runs` > 90 hari. Lihat §5 di `PLAN_CRON_UI_REFACTOR.md`.
+Seluruh teks yang dilihat pengguna berbahasa **Inggris**; komentar dan docblock
+di dalam kode berbahasa **Indonesia**. Itu keputusan sadar, bukan sisa yang
+belum diterjemahkan.

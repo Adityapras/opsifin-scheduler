@@ -12,8 +12,8 @@ enum FindingSeverity: string
     {
         return match ($this) {
             self::Info => 'Info',
-            self::Warning => 'Perlu review',
-            self::Error => 'Gagal parse',
+            self::Warning => 'Needs review',
+            self::Error => 'Parse failed',
         };
     }
 }

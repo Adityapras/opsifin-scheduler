@@ -28,7 +28,7 @@ class RunResource extends Resource
 
     protected static ?int $navigationSort = 20;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Operasional';
+    protected static string|\UnitEnum|null $navigationGroup = 'Operations';
 
     public static function infolist(Schema $schema): Schema
     {
@@ -56,7 +56,7 @@ class RunResource extends Resource
 
     public static function getNavigationBadgeTooltip(): ?string
     {
-        return 'Gagal atau timeout dalam 24 jam terakhir';
+        return 'Failed or timed out in the last 24 hours';
     }
 
     public static function getPages(): array

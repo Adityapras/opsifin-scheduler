@@ -17,26 +17,26 @@ class ClientForm
     {
         return $schema
             ->components([
-                Section::make('Identitas')
+                Section::make('Identity')
                     ->columns(2)
                     ->schema([
                         TextInput::make('code')
-                            ->label('Kode')
-                            ->helperText('Dipakai sebagai bagian dari lock key dan nama di crontab. Huruf, angka, titik, dan strip saja.')
+                            ->label('Code')
+                            ->helperText('Used as part of the lock key and the name in the crontab. Letters, digits, dots and dashes only.')
                             ->required()
                             ->maxLength(64)
                             ->rule('regex:/^[A-Za-z0-9._-]+$/')
                             ->unique(ignoreRecord: true),
 
                         TextInput::make('name')
-                            ->label('Nama')
+                            ->label('Name')
                             ->required(),
 
                         TextInput::make('base_url')
                             ->label('Base URL')
                             ->url()
                             ->required()
-                            ->helperText('Tanpa trailing slash. Path diambil dari task template.')
+                            ->helperText('No trailing slash. The path comes from the task template.')
                             ->columnSpanFull(),
 
                         Select::make('timezone')
@@ -47,17 +47,17 @@ class ClientForm
                             ->default(config('opsifin_cron.default_timezone')),
 
                         Toggle::make('is_active')
-                            ->label('Aktif')
-                            ->helperText('Client nonaktif tidak ikut di-render ke crontab.')
+                            ->label('Active')
+                            ->helperText('Inactive clients are not rendered into the crontab.')
                             ->default(true),
                     ]),
 
-                Section::make('Kredensial')
-                    ->description('Disimpan terenkripsi (AES-256). Tidak pernah ditulis ke file atau ke crontab.')
+                Section::make('Credentials')
+                    ->description('Stored encrypted (AES-256) and never written to a file or into the crontab, but shown in full here — the values have to be readable to be reconciled against the legacy scripts.')
                     ->columns(2)
                     ->schema([
                         Select::make('auth_type')
-                            ->label('Tipe auth')
+                            ->label('Auth type')
                             ->options(collect(AuthType::cases())->mapWithKeys(fn ($c) => [$c->value => $c->label()]))
                             ->default(AuthType::Basic->value)
                             ->live()
@@ -70,48 +70,46 @@ class ClientForm
 
                         TextInput::make('auth_secret')
                             ->label(fn (Get $get) => $get('auth_type') === AuthType::Bearer->value ? 'Token' : 'Password')
-                            ->password()
-                            ->revealable()
                             ->visible(fn (Get $get) => $get('auth_type') !== AuthType::None->value)
+                            ->autocomplete(false)
                             ->columnSpanFull(),
 
                         TextInput::make('auth_secret_key')
                             ->label('Secret key')
-                            ->helperText('Nilai untuk header SecretKey (dipakai task remittance/BCA). Kosongkan bila tidak dipakai.')
-                            ->password()
-                            ->revealable()
+                            ->helperText('Value for the SecretKey header (used by the remittance/BCA tasks). Leave empty if unused.')
+                            ->autocomplete(false)
                             ->columnSpanFull(),
                     ]),
 
-                Section::make('Review & catatan')
+                Section::make('Review & notes')
                     ->columns(2)
                     ->schema([
                         Toggle::make('needs_review')
-                            ->label('Butuh verifikasi manual')
-                            ->helperText('Diset otomatis oleh importer bila ada drift kredensial atau konflik base URL.'),
+                            ->label('Needs manual verification')
+                            ->helperText('Set automatically by the importer when credentials drift or base URLs conflict.'),
 
                         Textarea::make('review_notes')
-                            ->label('Catatan review')
+                            ->label('Review notes')
                             ->rows(3)
                             ->columnSpanFull(),
 
                         Textarea::make('notes')
-                            ->label('Catatan bebas')
+                            ->label('Free-form notes')
                             ->rows(3)
                             ->columnSpanFull(),
                     ]),
 
-                Section::make('Asal data legacy')
-                    ->description('Diisi importer. Hanya untuk penelusuran saat migrasi.')
+                Section::make('Legacy origin')
+                    ->description('Filled in by the importer. For migration tracing only.')
                     ->collapsed()
                     ->columns(2)
                     ->schema([
                         TextInput::make('legacy_config_file')
-                            ->label('File config')
+                            ->label('Config file')
                             ->disabled(),
 
                         TextInput::make('legacy_script_dir')
-                            ->label('Folder script')
+                            ->label('Script folder')
                             ->disabled(),
                     ]),
             ]);

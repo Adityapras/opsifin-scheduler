@@ -14,18 +14,18 @@ use Illuminate\Console\Command;
 class CronRunCommand extends Command
 {
     protected $signature = 'cron:run
-        {schedule : ID schedule, atau <client_code>/<task_key>}
+        {schedule : Schedule ID, or <client_code>/<task_key>}
         {--trigger=cron : cron|manual|shadow}
-        {--dry-run : Tampilkan request yang akan dikirim tanpa memanggil endpoint}';
+        {--dry-run : Show the request that would be sent without calling the endpoint}';
 
-    protected $description = 'Jalankan satu schedule: HTTP call, catat ke tabel runs';
+    protected $description = 'Run a single schedule: make the HTTP call and record it in the runs table';
 
     public function handle(JobRunner $runner): int
     {
         $schedule = $this->resolveSchedule($this->argument('schedule'));
 
         if ($schedule === null) {
-            $this->error('Schedule tidak ditemukan: '.$this->argument('schedule'));
+            $this->error('Schedule not found: '.$this->argument('schedule'));
 
             return self::FAILURE;
         }

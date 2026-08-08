@@ -40,9 +40,9 @@ class ConnectionTester
             if (in_array($response->status(), [401, 403], true)) {
                 return [
                     'ok' => false,
-                    'status' => 'Kredensial ditolak',
-                    'detail' => "Host hidup, tapi mengembalikan HTTP {$response->status()}. ".
-                        'Periksa username/password client ini.',
+                    'status' => 'Credentials rejected',
+                    'detail' => "The host is alive but returned HTTP {$response->status()}. ".
+                        'Check the username and password for this client.',
                     'http_status' => $response->status(),
                     'duration_ms' => $duration,
                 ];
@@ -50,16 +50,16 @@ class ConnectionTester
 
             return [
                 'ok' => true,
-                'status' => 'Host terjangkau',
-                'detail' => "HTTP {$response->status()} dari {$client->base_url}. ".
-                    'Kredensial tidak ditolak, tapi belum tentu valid untuk endpoint task tertentu.',
+                'status' => 'Host reachable',
+                'detail' => "HTTP {$response->status()} from {$client->base_url}. ".
+                    'The credentials were not rejected, but they may still be invalid for a specific task endpoint.',
                 'http_status' => $response->status(),
                 'duration_ms' => $duration,
             ];
         } catch (Throwable $e) {
             return [
                 'ok' => false,
-                'status' => 'Tidak bisa terhubung',
+                'status' => 'Cannot connect',
                 'detail' => $e->getMessage(),
                 'http_status' => null,
                 'duration_ms' => (int) round((microtime(true) - $started) * 1000),

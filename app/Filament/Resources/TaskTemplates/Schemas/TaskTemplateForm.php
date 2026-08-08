@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\TaskTemplates\Schemas;
 
 use App\Enums\HttpMethod;
+use App\Filament\Support\PreviewBox;
 use App\Models\Client;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
@@ -21,33 +22,33 @@ class TaskTemplateForm
     {
         return $schema
             ->components([
-                Section::make('Identitas')
+                Section::make('Identity')
                     ->columns(2)
                     ->schema([
                         TextInput::make('key')
                             ->label('Key')
-                            ->helperText('Dipakai di lock key dan di komentar baris crontab. snake_case.')
+                            ->helperText('Used in the lock key and in the crontab line comment. snake_case.')
                             ->required()
                             ->maxLength(96)
                             ->rule('regex:/^[a-z0-9_]+$/')
                             ->unique(ignoreRecord: true),
 
                         TextInput::make('name')
-                            ->label('Nama')
+                            ->label('Name')
                             ->required(),
 
                         Textarea::make('description')
-                            ->label('Deskripsi')
+                            ->label('Description')
                             ->rows(2)
                             ->columnSpanFull(),
 
                         Toggle::make('is_active')
-                            ->label('Aktif')
+                            ->label('Active')
                             ->default(true),
                     ]),
 
                 Section::make('Request')
-                    ->description('Nilai default untuk semua client. Client bisa menimpanya lewat override.')
+                    ->description('Defaults for every client. Individual clients can override them.')
                     ->columns(3)
                     ->schema([
                         Select::make('http_method')
@@ -69,28 +70,28 @@ class TaskTemplateForm
                             ->label('Body')
                             ->rows(3)
                             ->live(onBlur: true)
-                            ->helperText('Dikirim apa adanya dengan Content-Type: application/json.')
+                            ->helperText('Sent as-is with Content-Type: application/json.')
                             ->columnSpanFull(),
 
                         KeyValue::make('headers')
-                            ->label('Header tambahan')
-                            ->keyLabel('Nama')
-                            ->valueLabel('Nilai')
+                            ->label('Extra headers')
+                            ->keyLabel('Name')
+                            ->valueLabel('Value')
                             ->helperText(new HtmlString(
-                                'Authorization, Content-Type, dan Accept diisi otomatis. '.
-                                'Pakai <code>{{client.secret_key}}</code>, <code>{{client.username}}</code>, '.
-                                'atau <code>{{client.code}}</code> untuk nilai yang berbeda tiap client.'
+                                'Authorization, Content-Type and Accept are filled in automatically. '.
+                                'Use <code>{{client.secret_key}}</code>, <code>{{client.username}}</code> '.
+                                'or <code>{{client.code}}</code> for values that differ per client.'
                             ))
                             ->live()
                             ->columnSpanFull(),
                     ]),
 
                 Section::make('Timeout & retry')
-                    ->description('Tidak satu pun script lama punya timeout — di sini wajib ada.')
+                    ->description('Not a single one of the old scripts had a timeout — here it is mandatory.')
                     ->columns(3)
                     ->schema([
                         TextInput::make('default_timeout_sec')
-                            ->label('Timeout (detik)')
+                            ->label('Timeout (seconds)')
                             ->numeric()
                             ->minValue(1)
                             ->maxValue(3600)
@@ -98,7 +99,7 @@ class TaskTemplateForm
                             ->default(config('opsifin_cron.defaults.timeout_sec')),
 
                         TextInput::make('default_connect_timeout_sec')
-                            ->label('Connect timeout (detik)')
+                            ->label('Connect timeout (seconds)')
                             ->numeric()
                             ->minValue(1)
                             ->maxValue(300)
@@ -106,38 +107,36 @@ class TaskTemplateForm
                             ->default(config('opsifin_cron.defaults.connect_timeout_sec')),
 
                         TextInput::make('default_retries')
-                            ->label('Retry')
+                            ->label('Retries')
                             ->numeric()
                             ->minValue(0)
                             ->maxValue(5)
                             ->required()
                             ->default(config('opsifin_cron.defaults.retries'))
-                            ->helperText('0 = tidak diulang.'),
+                            ->helperText('0 = no retry.'),
                     ]),
 
                 Section::make('Preview')
-                    ->description('Perintah setara yang akan dijalankan runner untuk client terpilih.')
+                    ->description('The equivalent command the runner will execute for the selected client.')
                     ->schema([
                         Select::make('preview_client')
-                            ->label('Contoh client')
+                            ->label('Sample client')
                             ->options(fn () => Client::orderBy('code')->pluck('code', 'id'))
                             ->searchable()
                             ->live()
                             ->dehydrated(false),
 
-                        Text::make(fn (Get $get) => new HtmlString(
-                            '<pre class="overflow-x-auto whitespace-pre-wrap rounded bg-gray-950/5 p-3 text-xs dark:bg-white/5">'
-                            .e(self::previewCurl($get))
-                            .'</pre>'
-                        ))->columnSpanFull(),
+                        Text::make(fn (Get $get) => PreviewBox::make(self::previewCurl($get)))
+                            ->columnSpanFull(),
                     ]),
 
-                Section::make('Asal data legacy')
+                Section::make('Legacy origin')
+                    ->description('Filled in by the importer. For migration tracing only.')
                     ->collapsed()
                     ->columns(2)
                     ->schema([
-                        TextInput::make('legacy_job_file')->label('File job gateway')->disabled(),
-                        Toggle::make('legacy_gateway_routed')->label('Dirouting gateway.sh')->disabled(),
+                        TextInput::make('legacy_job_file')->label('Gateway job file')->disabled(),
+                        Toggle::make('legacy_gateway_routed')->label('Routed through gateway.sh')->disabled(),
                     ]),
             ]);
     }
@@ -162,17 +161,18 @@ class TaskTemplateForm
 
             $headers[$name] = $client
                 ? strtr((string) $value, [
-                    '{{client.secret_key}}' => '••• (secret key '.$client->code.')',
+                    '{{client.secret_key}}' => (string) $client->auth_secret_key,
                     '{{client.username}}' => (string) $client->auth_username,
                     '{{client.code}}' => $client->code,
                 ])
                 : (string) $value;
         }
 
-        if ($client && $client->authorizationHeader()) {
-            $headers['Authorization'] = $client->auth_type->value === 'basic'
-                ? 'Basic ••• ('.$client->auth_username.')'
-                : 'Bearer •••';
+        // Nilai asli, bukan samaran: preview ini hanya terbuka untuk role yang
+        // boleh mengubah template, dan gunanya justru mencocokkan header dengan
+        // script legacy.
+        if ($client && $authorization = $client->authorizationHeader()) {
+            $headers['Authorization'] = $authorization;
         }
 
         $lines = ['curl -i \\'];

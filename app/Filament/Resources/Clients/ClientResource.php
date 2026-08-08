@@ -56,7 +56,7 @@ class ClientResource extends Resource
 
     public static function getNavigationBadgeTooltip(): ?string
     {
-        return 'Client yang butuh verifikasi manual';
+        return 'Clients that need manual verification';
     }
 
     public static function getPages(): array

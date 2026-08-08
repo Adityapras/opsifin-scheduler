@@ -16,14 +16,14 @@
                 <dd class="font-mono text-sm">{{ $this->getTargetPath() }}</dd>
             </div>
             <div>
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Schedule aktif</dt>
+                <dt class="text-sm text-gray-500 dark:text-gray-400">Enabled schedules</dt>
                 <dd class="text-sm font-semibold">{{ number_format($this->getEnabledCount()) }}</dd>
             </div>
             <div>
-                <dt class="text-sm text-gray-500 dark:text-gray-400">Perubahan</dt>
+                <dt class="text-sm text-gray-500 dark:text-gray-400">Changes</dt>
                 <dd class="text-sm font-semibold">
                     <span class="text-emerald-600">+{{ $added }}</span>
-                    <span class="text-red-600">−{{ $removed }}</span> baris
+                    <span class="text-red-600">−{{ $removed }}</span> lines
                 </dd>
             </div>
         </dl>
@@ -32,9 +32,9 @@
     @if ($problems)
         <x-filament::section>
             <x-slot name="heading">
-                <span class="text-danger-600">Validasi gagal — {{ count($problems) }} schedule</span>
+                <span class="text-danger-600">Validation failed — {{ count($problems) }} schedules</span>
             </x-slot>
-            <x-slot name="description">Deploy dikunci sampai semua masalah di bawah beres.</x-slot>
+            <x-slot name="description">Deploying is blocked until every problem below is resolved.</x-slot>
 
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
@@ -42,7 +42,7 @@
                         <tr>
                             <th class="py-1 pe-4">Client</th>
                             <th class="py-1 pe-4">Task</th>
-                            <th class="py-1">Masalah</th>
+                            <th class="py-1">Problem</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -64,17 +64,17 @@
         </x-filament::section>
     @else
         <x-filament::section>
-            <x-slot name="heading">Validasi</x-slot>
-            <p class="text-sm text-emerald-600">Semua schedule aktif lolos validasi.</p>
+            <x-slot name="heading">Validation</x-slot>
+            <p class="text-sm text-emerald-600">All enabled schedules pass validation.</p>
         </x-filament::section>
     @endif
 
     <x-filament::section collapsible>
         <x-slot name="heading">Diff</x-slot>
-        <x-slot name="description">Perbandingan isi file sekarang dengan hasil render.</x-slot>
+        <x-slot name="description">The current file contents compared with the freshly rendered output.</x-slot>
 
         @if (! $diff)
-            <p class="text-sm text-gray-500 dark:text-gray-400">Tidak ada perubahan — file di server sudah sama dengan isi database.</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">No changes — the file on the server already matches the database.</p>
         @else
             <pre class="max-h-96 overflow-auto rounded-lg bg-gray-950/5 p-3 text-xs leading-relaxed dark:bg-white/5">@foreach ($diff as $entry)<span @class([
                 'block',
@@ -85,23 +85,23 @@
     </x-filament::section>
 
     <x-filament::section collapsible collapsed>
-        <x-slot name="heading">Preview file lengkap</x-slot>
+        <x-slot name="heading">Full file preview</x-slot>
 
         <pre class="max-h-[32rem] overflow-auto rounded-lg bg-gray-950/5 p-3 text-xs dark:bg-white/5">{{ $this->getPreview() }}</pre>
     </x-filament::section>
 
     <x-filament::section collapsible collapsed>
-        <x-slot name="heading">Backup ({{ count($backups) }} terakhir)</x-slot>
+        <x-slot name="heading">Backups ({{ count($backups) }} most recent)</x-slot>
 
         @if (! $backups)
-            <p class="text-sm text-gray-500 dark:text-gray-400">Belum ada backup — file akan di-backup otomatis pada deploy pertama.</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400">No backups yet — the file is backed up automatically on the first deploy.</p>
         @else
             <table class="w-full text-sm">
                 <thead class="text-left text-gray-500 dark:text-gray-400">
                     <tr>
                         <th class="py-1 pe-4">File</th>
-                        <th class="py-1 pe-4">Ukuran</th>
-                        <th class="py-1">Waktu</th>
+                        <th class="py-1 pe-4">Size</th>
+                        <th class="py-1">Time</th>
                     </tr>
                 </thead>
                 <tbody>

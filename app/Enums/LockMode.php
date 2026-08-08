@@ -13,8 +13,8 @@ enum LockMode: string
     public function label(): string
     {
         return match ($this) {
-            self::Skip => 'Skip bila masih berjalan (flock -n)',
-            self::Wait => 'Antre sampai timeout (flock -w)',
+            self::Skip => 'Skip if still running (flock -n)',
+            self::Wait => 'Queue until timeout (flock -w)',
         };
     }
 }

@@ -27,7 +27,7 @@ class DeployCrontab extends Page
 
     protected static ?int $navigationSort = 30;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Operasional';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected string $view = 'filament.pages.deploy-crontab';
 
@@ -95,26 +95,26 @@ class DeployCrontab extends Page
     public function deployAction(): Action
     {
         return Action::make('deploy')
-            ->label('Deploy sekarang')
+            ->label('Deploy now')
             ->icon('heroicon-o-rocket-launch')
             ->color('primary')
             ->authorize(fn () => auth()->user()->canManage())
             ->disabled(fn () => $this->getProblems() !== [])
             ->requiresConfirmation()
             ->modalHeading('Deploy ke '.$this->getTargetPath().'?')
-            ->modalDescription(fn () => $this->getEnabledCount().' schedule aktif akan ditulis. File lama otomatis di-backup.')
+            ->modalDescription(fn () => $this->getEnabledCount().' enabled schedules will be written. The old file is backed up automatically.')
             ->action(function () {
                 try {
                     $result = app(CrontabDeployer::class)->apply();
                 } catch (Throwable $e) {
-                    Notification::make()->title('Deploy gagal')->body($e->getMessage())->danger()->persistent()->send();
+                    Notification::make()->title('Deploy failed')->body($e->getMessage())->danger()->persistent()->send();
 
                     return;
                 }
 
                 Notification::make()
-                    ->title('Crontab ter-deploy')
-                    ->body($result['path'].' ('.number_format($result['bytes']).' byte). Backup: '.($result['backup'] ?? '—'))
+                    ->title('Crontab deployed')
+                    ->body($result['path'].' ('.number_format($result['bytes']).' bytes). Backup: '.($result['backup'] ?? '—'))
                     ->success()
                     ->persistent()
                     ->send();
@@ -124,26 +124,26 @@ class DeployCrontab extends Page
     public function rollbackAction(): Action
     {
         return Action::make('rollback')
-            ->label('Rollback ke backup terakhir')
+            ->label('Roll back to latest backup')
             ->icon('heroicon-o-arrow-uturn-left')
             ->color('danger')
             ->authorize(fn () => auth()->user()->canManage())
             ->disabled(fn () => $this->getBackups() === [])
             ->requiresConfirmation()
-            ->modalHeading('Kembalikan crontab ke versi sebelumnya?')
-            ->modalDescription('Isi file saat ini akan di-backup lebih dulu, jadi langkah ini bisa dibatalkan lagi.')
+            ->modalHeading('Restore the crontab to its previous version?')
+            ->modalDescription('The current file is backed up first, so this step can itself be undone.')
             ->action(function () {
                 try {
                     $result = app(CrontabDeployer::class)->rollback();
                 } catch (Throwable $e) {
-                    Notification::make()->title('Rollback gagal')->body($e->getMessage())->danger()->persistent()->send();
+                    Notification::make()->title('Rollback failed')->body($e->getMessage())->danger()->persistent()->send();
 
                     return;
                 }
 
                 Notification::make()
-                    ->title('Crontab dikembalikan')
-                    ->body('Dari backup: '.basename($result['restored_from']))
+                    ->title('Crontab restored')
+                    ->body('From backup: '.basename($result['restored_from']))
                     ->success()
                     ->persistent()
                     ->send();
@@ -153,7 +153,7 @@ class DeployCrontab extends Page
     public function refreshAction(): Action
     {
         return Action::make('refresh')
-            ->label('Muat ulang')
+            ->label('Refresh')
             ->icon('heroicon-o-arrow-path')
             ->color('gray')
             ->action(fn () => null);

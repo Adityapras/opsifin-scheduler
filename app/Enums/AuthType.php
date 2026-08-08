@@ -13,7 +13,7 @@ enum AuthType: string
         return match ($this) {
             self::Basic => 'Basic Auth',
             self::Bearer => 'Bearer Token',
-            self::None => 'Tanpa Auth',
+            self::None => 'No auth',
         };
     }
 }

@@ -28,7 +28,7 @@ class ScheduleResource extends Resource
 
     protected static ?int $navigationSort = 10;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'Operasional';
+    protected static string|\UnitEnum|null $navigationGroup = 'Operations';
 
     public static function form(Schema $schema): Schema
     {
@@ -47,7 +47,7 @@ class ScheduleResource extends Resource
 
     public static function getNavigationBadgeTooltip(): ?string
     {
-        return 'Schedule aktif yang akan di-render ke crontab';
+        return 'Enabled schedules that will be rendered into the crontab';
     }
 
     public static function getPages(): array

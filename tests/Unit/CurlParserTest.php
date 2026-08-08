@@ -109,7 +109,7 @@ class CurlParserTest extends TestCase
     {
         $curl = $this->parser->parseFile("curl -X POST -d '{}' https://gn.opsifin.com/x");
 
-        $this->assertContains('Tidak ada --max-time.', $curl->problems);
-        $this->assertContains('Tidak ada --connect-timeout.', $curl->problems);
+        $this->assertContains('No --max-time.', $curl->problems);
+        $this->assertContains('No --connect-timeout.', $curl->problems);
     }
 }

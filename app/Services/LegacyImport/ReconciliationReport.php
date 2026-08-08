@@ -17,31 +17,31 @@ use Illuminate\Support\Str;
 class ReconciliationReport
 {
     private const CATEGORY_LABELS = [
-        'credential_drift' => 'Kredensial berbeda antar sumber',
-        'cross_client_host' => 'Script menembak host milik client lain',
-        'host_mismatch' => 'Host berbeda dari base URL client',
-        'base_url_conflict' => 'Base URL config vs folder script berbeda',
-        'gateway_route_missing_file' => 'Routing gateway menunjuk file yang tidak ada',
-        'gateway_route_remapped' => 'Routing gateway dipetakan ulang otomatis',
-        'gateway_task_unknown' => 'Task gateway tidak dikenali',
-        'gateway_client_unknown' => 'Client gateway tanpa file config',
-        'job_not_routed' => 'Job orphan (tidak dirouting)',
-        'job_no_curl' => 'Job tanpa perintah curl',
-        'script_missing' => 'Crontab memanggil script yang tidak ada',
-        'script_not_in_client_folder' => 'Script tidak ada di folder client-nya',
-        'script_no_curl' => 'Script tanpa perintah curl',
-        'script_url_unresolved' => 'URL script tidak bisa diresolusi',
-        'script_url_dangling' => 'URL di baris terpisah — curl jalan tanpa URL',
-        'client_folder_missing' => 'Crontab memanggil folder client yang tidak ada',
-        'script_without_template' => 'Script tanpa template',
-        'suspicious_interval' => 'Interval cron kemungkinan salah tafsir',
-        'invalid_cron_expression' => 'Ekspresi cron tidak valid',
-        'duplicate_schedule' => 'Schedule duplikat di crontab',
-        'template_merged' => 'Template digabung karena endpoint identik',
-        'override_collision' => 'Dua script client untuk task yang sama, konfigurasi berbeda',
-        'conf_no_url' => 'Config tanpa API_URL',
-        'conf_matches_secondary_host' => 'Config cocok dengan host sekunder folder',
-        'not_a_job' => 'Baris cron bukan job Opsifin',
+        'credential_drift' => 'Credentials differ between sources',
+        'cross_client_host' => 'Script targets another client\'s host',
+        'host_mismatch' => 'Host differs from the client base URL',
+        'base_url_conflict' => 'Config base URL conflicts with the script folder',
+        'gateway_route_missing_file' => 'Gateway route points to a missing file',
+        'gateway_route_remapped' => 'Gateway route was remapped automatically',
+        'gateway_task_unknown' => 'Unrecognised gateway task',
+        'gateway_client_unknown' => 'Gateway client without a config file',
+        'job_not_routed' => 'Orphan job (never routed)',
+        'job_no_curl' => 'Job without a curl command',
+        'script_missing' => 'Crontab calls a script that does not exist',
+        'script_not_in_client_folder' => 'Script is not in its client folder',
+        'script_no_curl' => 'Script without a curl command',
+        'script_url_unresolved' => 'Script URL could not be resolved',
+        'script_url_dangling' => 'URL on a separate line — curl runs without a URL',
+        'client_folder_missing' => 'Crontab calls a client folder that does not exist',
+        'script_without_template' => 'Script without a template',
+        'suspicious_interval' => 'Cron interval is likely misread',
+        'invalid_cron_expression' => 'Invalid cron expression',
+        'duplicate_schedule' => 'Duplicate schedule in the crontab',
+        'template_merged' => 'Templates merged because the endpoints are identical',
+        'override_collision' => 'Two client scripts for the same task with different configs',
+        'conf_no_url' => 'Config without API_URL',
+        'conf_matches_secondary_host' => 'Config matches the folder\'s secondary host',
+        'not_a_job' => 'Cron line is not an Opsifin job',
     ];
 
     public function write(ImportRun $importRun, string $path): void
@@ -61,30 +61,30 @@ class ReconciliationReport
         $findings = $importRun->findings;
 
         $out = [];
-        $out[] = '# Laporan Rekonsiliasi Impor Cron Legacy';
+        $out[] = '# Legacy Cron Import Reconciliation Report';
         $out[] = '';
-        $out[] = '**Dijalankan:** '.$importRun->started_at?->format('d M Y H:i:s T');
-        $out[] = '**Sumber:** `'.$importRun->source_path.'`';
-        $out[] = '**Mode:** '.($importRun->dry_run ? 'dry run (database tidak diubah)' : 'apply');
+        $out[] = '**Run at:** '.$importRun->started_at?->format('d M Y H:i:s T');
+        $out[] = '**Source:** `'.$importRun->source_path.'`';
+        $out[] = '**Mode:** '.($importRun->dry_run ? 'dry run (the database was not changed)' : 'apply');
         $out[] = '';
-        $out[] = 'Dokumen ini wajib direview sebelum client mana pun diaktifkan di sistem baru. ';
-        $out[] = 'Setiap baris **error** harus tuntas; setiap **warning** harus punya keputusan tertulis.';
+        $out[] = 'This document must be reviewed before any client is enabled in the new system. ';
+        $out[] = 'Every **error** row must be resolved; every **warning** must have a written decision.';
         $out[] = '';
 
         // --- Ringkasan angka ---
-        $out[] = '## 1. Ringkasan';
+        $out[] = '## 1. Summary';
         $out[] = '';
-        $out[] = '| Metrik | Nilai |';
+        $out[] = '| Metric | Value |';
         $out[] = '| --- | ---: |';
-        $out[] = '| Folder client dipindai | '.($stats['client_folders'] ?? 0).' |';
-        $out[] = '| File `.sh` client diparse | '.($stats['client_scripts'] ?? 0).' |';
-        $out[] = '| File `.conf` | '.($stats['config_files'] ?? 0).' |';
-        $out[] = '| Job gateway (`jobs/*.sh`) | '.($stats['gateway_jobs'] ?? 0).' |';
-        $out[] = '| Routing terdaftar di `gateway.sh` | '.($stats['gateway_routes'] ?? 0).' |';
-        $out[] = '| Entry crontab terbaca | '.($stats['crontab_entries'] ?? 0).' |';
-        $out[] = '| — aktif (tidak di-comment) | '.($stats['entries_active'] ?? 0).' |';
-        $out[] = '| — di-comment | '.($stats['entries_commented'] ?? 0).' |';
-        $out[] = '| — tidak bisa dipetakan | '.($stats['entries_skipped'] ?? 0).' |';
+        $out[] = '| Client folders scanned | '.($stats['client_folders'] ?? 0).' |';
+        $out[] = '| Client `.sh` files parsed | '.($stats['client_scripts'] ?? 0).' |';
+        $out[] = '| `.conf` files | '.($stats['config_files'] ?? 0).' |';
+        $out[] = '| Gateway jobs (`jobs/*.sh`) | '.($stats['gateway_jobs'] ?? 0).' |';
+        $out[] = '| Routes registered in `gateway.sh` | '.($stats['gateway_routes'] ?? 0).' |';
+        $out[] = '| Crontab entries read | '.($stats['crontab_entries'] ?? 0).' |';
+        $out[] = '| — active (not commented out) | '.($stats['entries_active'] ?? 0).' |';
+        $out[] = '| — commented out | '.($stats['entries_commented'] ?? 0).' |';
+        $out[] = '| — could not be mapped | '.($stats['entries_skipped'] ?? 0).' |';
         $out[] = '| **Clients** | '.Client::count().' |';
         $out[] = '| **Task templates** | '.TaskTemplate::count().' |';
         $out[] = '| **Client task overrides** | '.ClientTaskOverride::count().' |';
@@ -96,19 +96,19 @@ class ReconciliationReport
         $withFlock = $stats['legacy_active_with_flock'] ?? 0;
         $noMaxTime = $stats['scripts_without_max_time'] ?? 0;
 
-        $out[] = '### Perbandingan dengan kondisi lama';
+        $out[] = '### Comparison with the old setup';
         $out[] = '';
-        $out[] = '| Aspek | Crontab lama | Setelah impor |';
+        $out[] = '| Aspect | Old crontab | After import |';
         $out[] = '| --- | --- | --- |';
-        $out[] = '| Coverage `flock` | '.$withFlock.' dari '.$activeEntries.
-            ' entry aktif ('.$this->percent($withFlock, $activeEntries).') | '.
-            Schedule::count().' dari '.Schedule::count().' (100%) — lock_key digenerate untuk setiap schedule |';
-        $out[] = '| Timeout HTTP | '.$noMaxTime.' script tanpa `--max-time` | semua template punya `default_timeout_sec` & `default_connect_timeout_sec` |';
-        $out[] = '| Sumber kredensial | script `.sh` + `.conf` + `opsifin_env.sh` | kolom terenkripsi di tabel `clients` |';
+        $out[] = '| `flock` coverage | '.$withFlock.' of '.$activeEntries.
+            ' active entries ('.$this->percent($withFlock, $activeEntries).') | '.
+            Schedule::count().' of '.Schedule::count().' (100%) — a lock_key is generated for every schedule |';
+        $out[] = '| HTTP timeout | '.$noMaxTime.' scripts without `--max-time` | every template has `default_timeout_sec` & `default_connect_timeout_sec` |';
+        $out[] = '| Credential source | `.sh` scripts + `.conf` + `opsifin_env.sh` | encrypted columns in the `clients` table |';
         $out[] = '';
 
         // --- Temuan ---
-        $out[] = '## 2. Temuan yang perlu ditindaklanjuti';
+        $out[] = '## 2. Findings that need follow-up';
         $out[] = '';
 
         foreach ([FindingSeverity::Error, FindingSeverity::Warning, FindingSeverity::Info] as $severity) {
@@ -118,7 +118,7 @@ class ReconciliationReport
             $out[] = '';
 
             if ($subset->isEmpty()) {
-                $out[] = '_Tidak ada._';
+                $out[] = '_None._';
                 $out[] = '';
 
                 continue;
@@ -127,7 +127,7 @@ class ReconciliationReport
             foreach ($subset->groupBy('category') as $category => $items) {
                 $out[] = '#### '.(self::CATEGORY_LABELS[$category] ?? $category).' — '.$items->count().'x';
                 $out[] = '';
-                $out[] = '| # | Lokasi | Keterangan |';
+                $out[] = '| # | Location | Detail |';
                 $out[] = '| ---: | --- | --- |';
 
                 foreach ($items->values() as $i => $item) {
@@ -147,13 +147,13 @@ class ReconciliationReport
         // --- Client yang butuh review ---
         $needsReview = Client::where('needs_review', true)->orderBy('code')->get();
 
-        $out[] = '## 3. Client yang butuh verifikasi manual';
+        $out[] = '## 3. Clients needing manual verification';
         $out[] = '';
 
         if ($needsReview->isEmpty()) {
-            $out[] = '_Tidak ada._';
+            $out[] = '_None._';
         } else {
-            $out[] = '| Client | Base URL | Config | Folder | Catatan |';
+            $out[] = '| Client | Base URL | Config | Folder | Notes |';
             $out[] = '| --- | --- | --- | --- | --- |';
 
             foreach ($needsReview as $client) {
@@ -171,9 +171,9 @@ class ReconciliationReport
         $out[] = '';
 
         // --- Inventaris client ---
-        $out[] = '## 4. Inventaris client';
+        $out[] = '## 4. Client inventory';
         $out[] = '';
-        $out[] = '| Client | Nama | Base URL | Auth | Schedules (aktif/total) | Overrides |';
+        $out[] = '| Client | Name | Base URL | Auth | Schedules (enabled/total) | Overrides |';
         $out[] = '| --- | --- | --- | --- | ---: | ---: |';
 
         $clients = Client::withCount([
@@ -198,9 +198,9 @@ class ReconciliationReport
         $out[] = '';
 
         // --- Inventaris template ---
-        $out[] = '## 5. Inventaris task template';
+        $out[] = '## 5. Task template inventory';
         $out[] = '';
-        $out[] = '| Key | Method | Path | Gateway | Schedules | Overrides | Script legacy |';
+        $out[] = '| Key | Method | Path | Gateway | Schedules | Overrides | Legacy script |';
         $out[] = '| --- | --- | --- | :---: | ---: | ---: | --- |';
 
         $templates = TaskTemplate::withCount(['schedules', 'overrides'])->orderBy('key')->get();
@@ -223,10 +223,10 @@ class ReconciliationReport
         $out[] = '';
 
         // --- Variasi path per template ---
-        $out[] = '## 6. Variasi path per template (§2.5 rencana)';
+        $out[] = '## 6. Path variations per template (§2.5 of the plan)';
         $out[] = '';
-        $out[] = 'Baris di bawah adalah client yang menyimpang dari path default template. ';
-        $out[] = 'Semua sudah tersimpan sebagai `client_task_overrides`, tapi tetap perlu dikonfirmasi bahwa penyimpangan itu memang disengaja.';
+        $out[] = 'The rows below are clients that deviate from their template default path. ';
+        $out[] = 'All of them are stored as `client_task_overrides`, but it still needs confirming that each deviation is intentional.';
         $out[] = '';
 
         $overrides = ClientTaskOverride::with(['client', 'taskTemplate'])
@@ -235,9 +235,9 @@ class ReconciliationReport
             ->get();
 
         if ($overrides->isEmpty()) {
-            $out[] = '_Tidak ada._';
+            $out[] = '_None._';
         } else {
-            $out[] = '| Client | Task | Path default | Path override |';
+            $out[] = '| Client | Task | Default path | Override path |';
             $out[] = '| --- | --- | --- | --- |';
 
             foreach ($overrides as $override) {
@@ -252,13 +252,13 @@ class ReconciliationReport
         }
 
         $out[] = '';
-        $out[] = '## 7. Checklist sebelum cutover';
+        $out[] = '## 7. Pre-cutover checklist';
         $out[] = '';
-        $out[] = '- [ ] Semua temuan **error** di bagian 2 sudah tuntas.';
-        $out[] = '- [ ] Setiap client di bagian 3 sudah diverifikasi kredensialnya (test connection).';
-        $out[] = '- [ ] Semua override path di bagian 6 sudah dikonfirmasi disengaja.';
-        $out[] = '- [ ] Jumlah schedule aktif hasil impor cocok dengan jumlah entry aktif di crontab produksi.';
-        $out[] = '- [ ] Shadow run 3–5 hari selesai dan hasilnya dibandingkan.';
+        $out[] = '- [ ] Every **error** finding in section 2 is resolved.';
+        $out[] = '- [ ] Every client in section 3 has had its credentials verified (connection test).';
+        $out[] = '- [ ] Every path override in section 6 is confirmed intentional.';
+        $out[] = '- [ ] The number of enabled schedules matches the number of active entries in the production crontab.';
+        $out[] = '- [ ] The 3–5 day shadow run is finished and the results compared.';
         $out[] = '';
 
         return implode("\n", $out);

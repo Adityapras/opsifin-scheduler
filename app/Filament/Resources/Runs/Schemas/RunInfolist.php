@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Runs\Schemas;
 
 use App\Enums\RunStatus;
+use App\Enums\RunTrigger;
 use App\Filament\Resources\Schedules\ScheduleResource;
 use App\Models\Run;
 use Filament\Infolists\Components\TextEntry;
@@ -15,7 +16,7 @@ class RunInfolist
     {
         return $schema
             ->components([
-                Section::make('Ringkasan')
+                Section::make('Summary')
                     ->columns(4)
                     ->schema([
                         TextEntry::make('client.code')->label('Client'),
@@ -33,21 +34,25 @@ class RunInfolist
                                 default => 'gray',
                             }),
 
-                        TextEntry::make('trigger')->label('Pemicu')->badge()->color('gray'),
+                        TextEntry::make('trigger')
+                            ->label('Trigger')
+                            ->badge()
+                            ->color('gray')
+                            ->formatStateUsing(fn (RunTrigger $state) => $state->label()),
 
                         TextEntry::make('started_at')
-                            ->label('Mulai')
+                            ->label('Started')
                             ->dateTime('d M Y H:i:s')
                             ->timezone(config('opsifin_cron.default_timezone')),
 
                         TextEntry::make('finished_at')
-                            ->label('Selesai')
+                            ->label('Finished')
                             ->dateTime('d M Y H:i:s')
                             ->timezone(config('opsifin_cron.default_timezone'))
                             ->placeholder('—'),
 
                         TextEntry::make('duration_ms')
-                            ->label('Durasi')
+                            ->label('Duration')
                             ->formatStateUsing(fn (?int $state) => $state === null ? '—' : number_format($state).' ms'),
 
                         TextEntry::make('host')->label('Host')->placeholder('—'),
@@ -75,12 +80,12 @@ class RunInfolist
                             ->color(fn (?int $state) => $state === null ? 'gray' : ($state < 400 ? 'success' : 'danger')),
 
                         TextEntry::make('error_message')
-                            ->label('Pesan error')
+                            ->label('Error message')
                             ->placeholder('—')
                             ->columnSpan(3),
 
                         TextEntry::make('response_excerpt')
-                            ->label('Body (dipotong)')
+                            ->label('Body (truncated)')
                             ->placeholder('—')
                             ->fontFamily('mono')
                             ->columnSpanFull(),
@@ -90,14 +95,14 @@ class RunInfolist
                     ->columns(3)
                     ->schema([
                         TextEntry::make('schedule.cron_expression')
-                            ->label('Ekspresi cron')
+                            ->label('Cron expression')
                             ->fontFamily('mono')
-                            ->placeholder('(schedule sudah dihapus)'),
+                            ->placeholder('(schedule has been deleted)'),
 
                         TextEntry::make('schedule.lock_key')->label('Lock key')->placeholder('—'),
 
                         TextEntry::make('schedule_id')
-                            ->label('Buka schedule')
+                            ->label('Open schedule')
                             ->placeholder('—')
                             ->url(fn (Run $record) => $record->schedule_id
                                 ? ScheduleResource::getUrl('edit', ['record' => $record->schedule_id])

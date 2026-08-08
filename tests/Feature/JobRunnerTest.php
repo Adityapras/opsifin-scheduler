@@ -162,6 +162,24 @@ class JobRunnerTest extends TestCase
         $this->assertStringNotContainsString('rest_gn:rahasia', $run->response_excerpt);
     }
 
+    /**
+     * Yang tersimpan di `runs` tetap tersamar, tapi pemanggil yang berhak bisa
+     * meminta nilai asli untuk ditampilkan di layar.
+     */
+    public function test_request_summary_can_be_rendered_without_masking(): void
+    {
+        $schedule = $this->makeSchedule();
+        $runner = app(JobRunner::class);
+
+        $masked = $runner->describeRequest($schedule->resolveRequest());
+        $plain = $runner->describeRequest($schedule->resolveRequest(), maskSecrets: false);
+
+        $expected = 'Basic '.base64_encode('rest_gn:rahasia');
+
+        $this->assertStringNotContainsString($expected, $masked);
+        $this->assertStringContainsString($expected, $plain);
+    }
+
     public function test_updates_last_and_next_run_on_the_schedule(): void
     {
         Http::fake(['*' => Http::response('ok', 200)]);

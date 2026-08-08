@@ -23,7 +23,7 @@ class RunsTable
             ->persistFiltersInSession()
             ->columns([
                 TextColumn::make('started_at')
-                    ->label('Mulai')
+                    ->label('Started')
                     ->dateTime('d M H:i:s')
                     ->timezone(config('opsifin_cron.default_timezone'))
                     ->sortable(),
@@ -57,19 +57,20 @@ class RunsTable
                     ->color(fn (?int $state) => $state === null ? 'gray' : ($state < 400 ? 'success' : 'danger')),
 
                 TextColumn::make('duration_ms')
-                    ->label('Durasi')
+                    ->label('Duration')
                     ->alignEnd()
                     ->formatStateUsing(fn (?int $state) => $state === null ? '—' : number_format($state).' ms')
                     ->sortable(),
 
                 TextColumn::make('trigger')
-                    ->label('Pemicu')
+                    ->label('Trigger')
                     ->badge()
                     ->color('gray')
+                    ->formatStateUsing(fn (RunTrigger $state) => $state->label())
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('error_message')
-                    ->label('Pesan')
+                    ->label('Message')
                     ->limit(50)
                     ->tooltip(fn (Run $record) => $record->error_message)
                     ->placeholder('—')
@@ -96,18 +97,18 @@ class RunsTable
                     ->multiple(),
 
                 SelectFilter::make('trigger')
-                    ->label('Pemicu')
-                    ->options(collect(RunTrigger::cases())->mapWithKeys(fn ($t) => [$t->value => $t->value]))
+                    ->label('Trigger')
+                    ->options(collect(RunTrigger::cases())->mapWithKeys(fn ($t) => [$t->value => $t->label()]))
                     ->multiple(),
 
                 Filter::make('problems_only')
-                    ->label('Hanya yang bermasalah')
+                    ->label('Problems only')
                     ->query(fn ($query) => $query->whereIn('status', [RunStatus::Failed->value, RunStatus::Timeout->value])),
 
                 Filter::make('period')
                     ->schema([
-                        DateTimePicker::make('from')->label('Dari'),
-                        DateTimePicker::make('until')->label('Sampai'),
+                        DateTimePicker::make('from')->label('From'),
+                        DateTimePicker::make('until')->label('Until'),
                     ])
                     ->query(fn ($query, array $data) => $query
                         ->when($data['from'] ?? null, fn ($q, $v) => $q->where('started_at', '>=', $v))

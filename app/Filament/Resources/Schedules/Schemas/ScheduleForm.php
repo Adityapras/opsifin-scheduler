@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Schedules\Schemas;
 
 use App\Enums\LockMode;
+use App\Filament\Support\PreviewBox;
 use App\Models\Client;
 use App\Models\Schedule;
 use App\Models\TaskTemplate;
@@ -17,8 +18,8 @@ use Filament\Schemas\Components\Text;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\HtmlString;
 
 class ScheduleForm
 {
@@ -27,6 +28,7 @@ class ScheduleForm
         return $schema
             ->components([
                 Section::make('Target')
+                    ->description('Which client calls which task. The resolved URL is shown below.')
                     ->columns(2)
                     ->schema([
                         Select::make('client_id')
@@ -49,24 +51,25 @@ class ScheduleForm
                             ->live()
                             ->afterStateUpdated(fn (Get $get, Set $set) => self::syncLockKey($get, $set)),
 
-                        Text::make(fn (Get $get) => new HtmlString(self::targetPreview($get)))
+                        Text::make(fn (Get $get) => self::targetPreview($get))
                             ->columnSpanFull(),
                     ]),
 
-                Section::make('Jadwal')
+                Section::make('Schedule')
+                    ->description('Cron expression and the timezone it is evaluated in.')
                     ->columns(2)
                     ->schema([
                         TextInput::make('cron_expression')
-                            ->label('Ekspresi cron')
+                            ->label('Cron expression')
                             ->placeholder('*/6 * * * *')
                             ->required()
                             ->live(onBlur: true)
                             ->rule(fn () => function (string $attribute, $value, $fail) {
                                 if (! CronExpression::isValidExpression((string) $value)) {
-                                    $fail('Ekspresi cron tidak valid.');
+                                    $fail('The cron expression is not valid.');
                                 }
                             })
-                            ->helperText('menit jam tanggal bulan hari — contoh: */6 * * * *'),
+                            ->helperText('minute hour day month weekday — for example: */6 * * * *'),
 
                         Select::make('timezone')
                             ->label('Timezone')
@@ -75,14 +78,14 @@ class ScheduleForm
                             ->required()
                             ->live()
                             ->default(config('opsifin_cron.default_timezone'))
-                            ->helperText('Seluruh schedule aktif harus memakai timezone yang sama — satu file cron.d hanya punya satu CRON_TZ.'),
+                            ->helperText('Every enabled schedule must use the same timezone — a single cron.d file only has one CRON_TZ.'),
 
-                        Text::make(fn (Get $get) => new HtmlString(self::cronPreview($get)))
+                        Text::make(fn (Get $get) => self::cronPreview($get))
                             ->columnSpanFull(),
                     ]),
 
                 Section::make('Lock')
-                    ->description('Setiap schedule wajib punya lock — inilah yang mencegah job menumpuk seperti di sistem lama.')
+                    ->description('Every schedule needs a lock — this is what stops jobs from piling up the way they did in the old system.')
                     ->columns(3)
                     ->schema([
                         TextInput::make('lock_key')
@@ -90,7 +93,7 @@ class ScheduleForm
                             ->required()
                             ->maxLength(191)
                             ->rule('regex:/^[A-Za-z0-9._-]+$/')
-                            ->helperText('Dua schedule dengan lock key sama tidak akan pernah berjalan bersamaan.'),
+                            ->helperText('Two schedules sharing a lock key never run at the same time.'),
 
                         Select::make('lock_mode')
                             ->label('Mode')
@@ -100,7 +103,7 @@ class ScheduleForm
                             ->required(),
 
                         TextInput::make('lock_wait_sec')
-                            ->label('Tunggu (detik)')
+                            ->label('Wait (seconds)')
                             ->numeric()
                             ->minValue(1)
                             ->maxValue(3600)
@@ -113,26 +116,27 @@ class ScheduleForm
                     ->columns(2)
                     ->schema([
                         Toggle::make('is_enabled')
-                            ->label('Aktif')
-                            ->helperText('Hanya schedule aktif yang ikut di-render ke crontab.'),
+                            ->label('Enabled')
+                            ->helperText('Only enabled schedules are rendered into the crontab.'),
 
                         Toggle::make('needs_review')
-                            ->label('Butuh verifikasi manual'),
+                            ->label('Needs manual verification'),
 
                         Textarea::make('review_notes')
-                            ->label('Catatan review')
+                            ->label('Review notes')
                             ->rows(2)
                             ->columnSpanFull(),
                     ]),
 
-                Section::make('Asal data legacy')
+                Section::make('Legacy origin')
+                    ->description('Filled in by the importer. For migration tracing only.')
                     ->collapsed()
                     ->columns(2)
                     ->schema([
-                        TextInput::make('legacy_pattern')->label('Pola')->disabled(),
-                        TextInput::make('legacy_line_no')->label('Baris crontab')->disabled(),
+                        TextInput::make('legacy_pattern')->label('Pattern')->disabled(),
+                        TextInput::make('legacy_line_no')->label('Crontab line')->disabled(),
                         Textarea::make('legacy_command')
-                            ->label('Perintah asli')
+                            ->label('Original command')
                             ->rows(2)
                             ->disabled()
                             ->columnSpanFull(),
@@ -154,13 +158,13 @@ class ScheduleForm
         }
     }
 
-    private static function targetPreview(Get $get): string
+    private static function targetPreview(Get $get): Htmlable
     {
         $client = Client::find($get('client_id'));
         $template = TaskTemplate::find($get('task_template_id'));
 
         if (! $client || ! $template) {
-            return self::box('Pilih client dan task untuk melihat URL yang akan dipanggil.', 'gray');
+            return PreviewBox::make('Pick a client and a task to see the URL that will be called.');
         }
 
         $schedule = new Schedule([
@@ -176,18 +180,18 @@ class ScheduleForm
         $text = $request['method']->value.' '.$request['url'];
 
         if ($override) {
-            $text .= "\nClient ini punya override — nilai di atas sudah memperhitungkannya.";
+            $text .= "\nThis client has an override — the value above already accounts for it.";
         }
 
-        return self::box($text, $override ? 'warning' : 'info');
+        return PreviewBox::make($text, $override ? PreviewBox::TONE_WARNING : PreviewBox::TONE_INFO);
     }
 
-    private static function cronPreview(Get $get): string
+    private static function cronPreview(Get $get): Htmlable
     {
         $expression = (string) $get('cron_expression');
 
         if (blank($expression) || ! CronExpression::isValidExpression($expression)) {
-            return self::box('Masukkan ekspresi cron yang valid untuk melihat jadwal berikutnya.', 'gray');
+            return PreviewBox::make('Enter a valid cron expression to see the upcoming runs.');
         }
 
         $timezone = $get('timezone') ?: config('opsifin_cron.default_timezone');
@@ -200,7 +204,7 @@ class ScheduleForm
         }
 
         $lines[] = '';
-        $lines[] = '5 jadwal berikutnya ('.$timezone.'):';
+        $lines[] = 'Next 5 runs ('.$timezone.'):';
 
         $cron = new CronExpression($expression);
 
@@ -208,17 +212,9 @@ class ScheduleForm
             $lines[] = '  · '.Carbon::instance($date)->setTimezone($timezone)->format('D, d M Y H:i');
         }
 
-        return self::box(implode("\n", $lines), $warning ? 'warning' : 'info');
-    }
-
-    private static function box(string $text, string $tone): string
-    {
-        $classes = match ($tone) {
-            'warning' => 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200',
-            'info' => 'border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-200',
-            default => 'border-gray-300 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-white/5 dark:text-gray-400',
-        };
-
-        return '<pre class="whitespace-pre-wrap rounded-lg border p-3 text-xs '.$classes.'">'.e($text).'</pre>';
+        return PreviewBox::make(
+            implode("\n", $lines),
+            $warning ? PreviewBox::TONE_WARNING : PreviewBox::TONE_INFO
+        );
     }
 }

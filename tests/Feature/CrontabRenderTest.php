@@ -88,7 +88,7 @@ class CrontabRenderTest extends TestCase
 
         foreach (preg_split('/\r?\n/', $output) as $line) {
             if (preg_match('/cron:run \d+/', $line)) {
-                $this->assertStringContainsString('flock -n', $line, "Baris tanpa flock: {$line}");
+                $this->assertStringContainsString('flock -n', $line, "Line without flock: {$line}");
             }
         }
     }
@@ -101,7 +101,7 @@ class CrontabRenderTest extends TestCase
 
         $output = app(CrontabRenderer::class)->render();
 
-        $this->assertStringContainsString('(tidak ada schedule aktif)', $output);
+        $this->assertStringContainsString('(no enabled schedules)', $output);
     }
 
     public function test_validation_rejects_invalid_cron_expression(): void
@@ -112,7 +112,7 @@ class CrontabRenderTest extends TestCase
         $problems = app(CrontabRenderer::class)->validate();
 
         $this->assertCount(1, $problems);
-        $this->assertStringContainsString('tidak valid', $problems[0]['problem']);
+        $this->assertStringContainsString('not valid', $problems[0]['problem']);
     }
 
     public function test_validation_rejects_unsafe_lock_key(): void
@@ -121,7 +121,7 @@ class CrontabRenderTest extends TestCase
 
         $problems = app(CrontabRenderer::class)->validate();
 
-        $this->assertStringContainsString('tidak aman', $problems[0]['problem']);
+        $this->assertStringContainsString('unsafe', $problems[0]['problem']);
     }
 
     public function test_validation_rejects_mixed_timezones(): void
@@ -195,7 +195,7 @@ class CrontabRenderTest extends TestCase
 
         Schedule::query()->update(['is_enabled' => false]);
         $deployer->apply();
-        $this->assertStringContainsString('(tidak ada schedule aktif)', File::get($this->target));
+        $this->assertStringContainsString('(no enabled schedules)', File::get($this->target));
 
         $deployer->rollback();
         $this->assertSame($original, File::get($this->target));

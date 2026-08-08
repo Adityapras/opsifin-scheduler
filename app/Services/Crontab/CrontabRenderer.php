@@ -27,8 +27,8 @@ class CrontabRenderer
 
         $lines = [];
         $lines[] = self::BEGIN_MARKER.' — generated '.$generatedAt->toIso8601String();
-        $lines[] = '# Dihasilkan otomatis oleh `php artisan cron:render`. JANGAN diedit manual —';
-        $lines[] = '# perubahan akan tertimpa pada deploy berikutnya. Sumber kebenaran: tabel `schedules`.';
+        $lines[] = '# Generated automatically by `php artisan cron:render`. DO NOT edit by hand —';
+        $lines[] = '# changes are overwritten on the next deploy. Source of truth: the `schedules` table.';
         $lines[] = '';
         $lines[] = 'SHELL=/bin/bash';
         $lines[] = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
@@ -45,7 +45,7 @@ class CrontabRenderer
         $lines[] = '';
 
         if ($schedules->isEmpty()) {
-            $lines[] = '# (tidak ada schedule aktif)';
+            $lines[] = '# (no enabled schedules)';
         }
 
         foreach ($schedules->groupBy(fn (Schedule $s) => $s->client->code) as $clientCode => $group) {
@@ -161,8 +161,8 @@ class CrontabRenderer
                 if ($schedule->timezone !== $timezones->first()) {
                     $problems[] = [
                         'schedule' => $schedule,
-                        'problem' => "Timezone '{$schedule->timezone}' berbeda dari mayoritas ('{$timezones->first()}'). ".
-                            'Satu file cron.d hanya mendukung satu CRON_TZ.',
+                        'problem' => "Timezone '{$schedule->timezone}' differs from the majority ('{$timezones->first()}'). ".
+                            'A single cron.d file only supports one CRON_TZ.',
                     ];
                 }
             }
@@ -170,31 +170,31 @@ class CrontabRenderer
 
         foreach ($schedules as $schedule) {
             if (! CronExpression::isValidExpression($schedule->cron_expression)) {
-                $problems[] = ['schedule' => $schedule, 'problem' => 'Ekspresi cron tidak valid.'];
+                $problems[] = ['schedule' => $schedule, 'problem' => 'The cron expression is not valid.'];
 
                 continue;
             }
 
             if (str_contains($schedule->cron_expression, "\n")) {
-                $problems[] = ['schedule' => $schedule, 'problem' => 'Ekspresi cron mengandung newline.'];
+                $problems[] = ['schedule' => $schedule, 'problem' => 'The cron expression contains a newline.'];
             }
 
             if (blank($schedule->lock_key)) {
-                $problems[] = ['schedule' => $schedule, 'problem' => 'lock_key kosong — flock wajib untuk setiap schedule.'];
+                $problems[] = ['schedule' => $schedule, 'problem' => 'lock_key is empty — flock is mandatory for every schedule.'];
             }
 
             if (! preg_match('/^[A-Za-z0-9._\-]+$/', (string) $schedule->lock_key)) {
-                $problems[] = ['schedule' => $schedule, 'problem' => "lock_key '{$schedule->lock_key}' mengandung karakter yang tidak aman untuk nama file."];
+                $problems[] = ['schedule' => $schedule, 'problem' => "lock_key '{$schedule->lock_key}' contains characters that are unsafe in a file name."];
             }
 
             $request = $schedule->resolveRequest();
 
             if (! filter_var($request['url'], FILTER_VALIDATE_URL)) {
-                $problems[] = ['schedule' => $schedule, 'problem' => 'URL hasil resolve tidak valid: '.$request['url']];
+                $problems[] = ['schedule' => $schedule, 'problem' => 'The resolved URL is not valid: '.$request['url']];
             }
 
             if ($schedule->client->auth_type->value !== 'none' && blank($schedule->client->auth_username)) {
-                $problems[] = ['schedule' => $schedule, 'problem' => "Client '{$schedule->client->code}' memakai auth ".$schedule->client->auth_type->value.' tapi username kosong.'];
+                $problems[] = ['schedule' => $schedule, 'problem' => "Client '{$schedule->client->code}' uses ".$schedule->client->auth_type->value.' auth but has no username.'];
             }
         }
 

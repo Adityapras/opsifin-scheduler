@@ -43,18 +43,18 @@ class TaskTemplatesTable
                     ->formatStateUsing(fn ($state) => $state.'s'),
 
                 TextColumn::make('schedules_count')
-                    ->label('Schedule')
+                    ->label('Schedules')
                     ->counts('schedules')
                     ->alignEnd()
                     ->sortable(),
 
                 TextColumn::make('overrides_count')
-                    ->label('Override')
+                    ->label('Overrides')
                     ->counts('overrides')
                     ->alignEnd()
                     ->badge()
                     ->color(fn ($state) => $state > 0 ? 'warning' : 'gray')
-                    ->tooltip('Client yang menyimpang dari nilai default template ini')
+                    ->tooltip('Clients that deviate from this template\'s defaults')
                     ->sortable(),
 
                 IconColumn::make('legacy_gateway_routed')
@@ -63,13 +63,13 @@ class TaskTemplatesTable
                     ->tooltip(fn (TaskTemplate $record) => $record->legacy_job_file),
 
                 IconColumn::make('is_active')
-                    ->label('Aktif')
+                    ->label('Active')
                     ->boolean(),
             ])
             ->filters([
-                TernaryFilter::make('is_active')->label('Status aktif'),
+                TernaryFilter::make('is_active')->label('Active'),
 
-                TernaryFilter::make('legacy_gateway_routed')->label('Berasal dari gateway'),
+                TernaryFilter::make('legacy_gateway_routed')->label('Came from gateway'),
 
                 SelectFilter::make('http_method')
                     ->label('Method')

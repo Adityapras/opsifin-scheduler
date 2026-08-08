@@ -81,7 +81,7 @@ class LegacyImporter
         $this->sourcePath = rtrim($sourcePath, '/');
 
         if (! is_dir($this->sourcePath)) {
-            throw new RuntimeException("Source path tidak ditemukan: {$this->sourcePath}");
+            throw new RuntimeException("Source path not found: {$this->sourcePath}");
         }
 
         $importRun = new ImportRun([
@@ -167,7 +167,7 @@ class LegacyImporter
             $curl = $this->curlParser->parseFile(file_get_contents($file) ?: '', $variables);
 
             if ($curl === null) {
-                $this->finding(FindingSeverity::Error, 'job_no_curl', "Job {$relative} tidak berisi perintah curl.", $relative);
+                $this->finding(FindingSeverity::Error, 'job_no_curl', "Job {$relative} contains no curl command.", $relative);
 
                 continue;
             }
@@ -181,8 +181,8 @@ class LegacyImporter
                 $this->finding(
                     FindingSeverity::Error,
                     'gateway_route_missing_file',
-                    "gateway.sh merutekan task '{$task}' ke {$relative}, tapi file itu tidak ada. ".
-                    'Job akan gagal diam-diam (gateway tetap exit 0).',
+                    "gateway.sh routes task '{$task}' to {$relative}, but that file does not exist. ".
+                    'The job fails silently (gateway still exits 0).',
                     'gateway.sh',
                     context: ['task' => $task, 'target' => $relative],
                 );
@@ -195,7 +195,7 @@ class LegacyImporter
                 $this->finding(
                     FindingSeverity::Warning,
                     'job_not_routed',
-                    "Job {$relative} ada di jobs/ tapi tidak terdaftar di routing gateway.sh.",
+                    "Job {$relative} exists in jobs/ but is not registered in the gateway.sh routing.",
                     $relative,
                 );
             }
@@ -230,7 +230,7 @@ class LegacyImporter
                 $total++;
 
                 if ($curl === null) {
-                    $this->finding(FindingSeverity::Error, 'script_no_curl', "Script {$relative} tidak berisi perintah curl.", $relative);
+                    $this->finding(FindingSeverity::Error, 'script_no_curl', "Script {$relative} contains no curl command.", $relative);
 
                     continue;
                 }
@@ -240,8 +240,8 @@ class LegacyImporter
                         $this->finding(
                             FindingSeverity::Error,
                             'script_url_dangling',
-                            "Pada {$relative} URL ditulis di baris terpisah tanpa backslash continuation, ".
-                            "jadi curl dijalankan tanpa URL sama sekali dan job ini selalu gagal. URL yang dimaksud: {$curl->danglingUrl}",
+                            "In {$relative} the URL is on a separate line without a backslash continuation, ".
+                            "so curl runs with no URL at all and this job always fails. The intended URL: {$curl->danglingUrl}",
                             $relative,
                             context: ['dangling_url' => $curl->danglingUrl],
                         );
@@ -249,8 +249,8 @@ class LegacyImporter
                         $this->finding(
                             FindingSeverity::Error,
                             'script_url_unresolved',
-                            "URL pada {$relative} tidak bisa diresolusi (kemungkinan variabel env tidak terdefinisi): ".
-                            ($curl->rawUrl ?? '(kosong)'),
+                            "The URL in {$relative} could not be resolved (an env variable is probably undefined): ".
+                            ($curl->rawUrl ?? '(empty)'),
                             $relative,
                             context: ['raw_url' => $curl->rawUrl],
                         );
@@ -364,8 +364,8 @@ class LegacyImporter
                 $this->finding(
                     FindingSeverity::Warning,
                     'gateway_route_remapped',
-                    "Task gateway '{$task}' dipetakan ke template '{$guess}' berdasarkan kemiripan nama, ".
-                    "karena {$relative} tidak ada. Verifikasi manual sebelum diaktifkan.",
+                    "Gateway task '{$task}' was mapped to template '{$guess}' by name similarity, ".
+                    "because {$relative} does not exist. Verify manually before enabling.",
                     'gateway.sh',
                     context: ['task' => $task, 'template' => $guess],
                 );
@@ -444,7 +444,7 @@ class LegacyImporter
                     FindingSeverity::Info,
                     'template_merged',
                     sprintf(
-                        "Script '%s.sh' digabung ke template yang sama dengan '%s.sh' karena endpoint identik (%s).",
+                        "Script '%s.sh' was merged into the same template as '%s.sh' because the endpoints are identical (%s).",
                         $group['names'][0],
                         $merged[$host]['names'][0],
                         $path,
@@ -593,7 +593,7 @@ class LegacyImporter
                     }
 
                     $outliers[] = sprintf(
-                        "user '%s' pada %s",
+                        "user '%s' in %s",
                         explode("\0", $credKey)[0],
                         implode(', ', $scriptsByCredential[$credKey] ?? []),
                     );
@@ -603,9 +603,9 @@ class LegacyImporter
                     FindingSeverity::Error,
                     'credential_drift',
                     sprintf(
-                        "Folder %s/ memakai %d kredensial berbeda. Client memakai user '%s' (%d script). ".
-                        'Menyimpang: %s. Kredensial hanya bisa satu per client, jadi script menyimpang '.
-                        'ini akan berjalan dengan kredensial dominan setelah migrasi — konfirmasi mana yang benar.',
+                        "Folder %s/ uses %d different credentials. The client uses user '%s' (%d scripts). ".
+                        'Deviating: %s. A client can only hold one credential, so the deviating scripts '.
+                        'will run with the dominant credential after migration — confirm which one is correct.',
                         $folder,
                         count($credentials),
                         $username,
@@ -634,7 +634,7 @@ class LegacyImporter
                     'legacy_script_dir' => $folder.'/',
                     'needs_review' => count($credentials) > 1 || count($hosts) > 1,
                     'review_notes' => count($hosts) > 1
-                        ? 'Folder memakai lebih dari satu host: '.implode(', ', array_keys($hosts))
+                        ? 'The folder uses more than one host: '.implode(', ', array_keys($hosts))
                         : null,
                 ],
             );
@@ -648,7 +648,7 @@ class LegacyImporter
             $apiUrl = rtrim($vars['API_URL'] ?? '', '/');
 
             if ($apiUrl === '') {
-                $this->finding(FindingSeverity::Error, 'conf_no_url', "Config {$conf['file']} tidak punya API_URL.", $conf['file']);
+                $this->finding(FindingSeverity::Error, 'conf_no_url', "Config {$conf['file']} has no API_URL.", $conf['file']);
 
                 continue;
             }
@@ -672,9 +672,9 @@ class LegacyImporter
                     FindingSeverity::Warning,
                     'base_url_conflict',
                     sprintf(
-                        'Config %s memakai %s sedangkan folder %s/ dominan ke %s. '.
-                        "Dibuat sebagai client terpisah dengan kode '%s'. ".
-                        'Konfirmasi apakah keduanya sistem yang sama (migrasi domain) lalu gabungkan manual.',
+                        'Config %s uses %s while folder %s/ mostly points to %s. '.
+                        "Created as a separate client with code '%s'. ".
+                        'Confirm whether both are the same system (a domain migration) and merge them manually.',
                         $conf['file'],
                         $apiUrl,
                         $code,
@@ -688,7 +688,7 @@ class LegacyImporter
                 $this->finding(
                     FindingSeverity::Info,
                     'conf_matches_secondary_host',
-                    "Config {$conf['file']} ({$apiUrl}) memakai host yang juga dipakai sebagian script di folder {$clashingFolder}/.",
+                    "Config {$conf['file']} ({$apiUrl}) uses a host that some scripts in folder {$clashingFolder}/ also use.",
                     $conf['file'],
                 );
             }
@@ -707,7 +707,7 @@ class LegacyImporter
                     'legacy_config_file' => $conf['file'],
                     'needs_review' => $clientCode !== $code,
                     'review_notes' => $clientCode !== $code
-                        ? "Kemungkinan client yang sama dengan '{$code}' (folder script) tapi base URL berbeda."
+                        ? "Possibly the same client as '{$code}' (script folder) but with a different base URL."
                         : null,
                 ],
             );
@@ -757,9 +757,9 @@ class LegacyImporter
                 FindingSeverity::Error,
                 'credential_drift',
                 sprintf(
-                    "Client %s: script memakai user '%s' sedangkan %s memakai '%s'. ".
-                    'Importer memakai kredensial dari script (dipakai mayoritas job produksi). '.
-                    'Verifikasi mana yang valid dengan test-connection sebelum diaktifkan.',
+                    "Client %s: the scripts use user '%s' while %s uses '%s'. ".
+                    'The importer keeps the credential from the scripts (used by most production jobs). '.
+                    'Verify which one is valid with a connection test before enabling.',
                     $client->code,
                     $client->auth_username,
                     $conf['file'],
@@ -769,7 +769,7 @@ class LegacyImporter
                 context: ['script_user' => $client->auth_username, 'conf_user' => $confUser],
             );
 
-            $notes[] = "Kredensial berbeda dengan {$conf['file']} (conf user: {$confUser}).";
+            $notes[] = "Credentials differ from {$conf['file']} (conf user: {$confUser}).";
         }
 
         $client->legacy_config_file = $conf['file'];
@@ -841,7 +841,7 @@ class LegacyImporter
                     $this->finding(
                         FindingSeverity::Error,
                         'script_without_template',
-                        "Script {$folder}/{$base}.sh tidak terpetakan ke template mana pun.",
+                        "Script {$folder}/{$base}.sh is not mapped to any template.",
                         $folder.'/'.$base.'.sh',
                     );
 
@@ -892,8 +892,8 @@ class LegacyImporter
                             FindingSeverity::Error,
                             'override_collision',
                             sprintf(
-                                "Client '%s' punya dua script untuk task '%s' dengan konfigurasi berbeda: %s dan %s. ".
-                                'Yang dipakai: %s (dirujuk crontab / ditemukan lebih dulu). Konfirmasi mana yang benar lalu hapus salah satunya.',
+                                "Client '%s' has two scripts for task '%s' with different configurations: %s and %s. ".
+                                'The one used: %s (referenced by the crontab / found first). Confirm which is correct and delete the other.',
                                 $client->code,
                                 $template->key,
                                 $previous['script'],
@@ -981,8 +981,8 @@ class LegacyImporter
             $this->finding(
                 FindingSeverity::Error,
                 'cross_client_host',
-                "Script {$folder}/{$base}.sh menembak {$baseUrl}, yaitu host milik client '{$owner}', ".
-                "bukan host client '{$client->code}' ({$client->base_url}). Kemungkinan besar salah copy — konfirmasi sebelum migrasi.",
+                "Script {$folder}/{$base}.sh targets {$baseUrl}, which is the host of client '{$owner}', ".
+                "not the host of client '{$client->code}' ({$client->base_url}). Most likely a bad copy — confirm before migrating.",
                 $folder.'/'.$base.'.sh',
                 context: ['expected' => $client->base_url, 'actual' => $baseUrl, 'owner' => $owner],
             );
@@ -993,8 +993,8 @@ class LegacyImporter
         $this->finding(
             FindingSeverity::Warning,
             'host_mismatch',
-            "Script {$folder}/{$base}.sh memakai {$baseUrl}, berbeda dari base URL client '{$client->code}' ({$client->base_url}). ".
-            'Disimpan sebagai base_url_override.',
+            "Script {$folder}/{$base}.sh uses {$baseUrl}, which differs from the base URL of client '{$client->code}' ({$client->base_url}). ".
+            'Stored as base_url_override.',
             $folder.'/'.$base.'.sh',
             context: ['expected' => $client->base_url, 'actual' => $baseUrl],
         );
@@ -1027,7 +1027,7 @@ class LegacyImporter
                 $this->finding(
                     FindingSeverity::Info,
                     'not_a_job',
-                    'Baris cron tidak mengarah ke script client maupun gateway: '.Str::limit($entry->command, 120),
+                    'The cron line points to neither a client script nor the gateway: '.Str::limit($entry->command, 120),
                     'opsifin_crontab',
                     $entry->lineNo,
                 );
@@ -1048,7 +1048,7 @@ class LegacyImporter
                 $this->finding(
                     FindingSeverity::Error,
                     'invalid_cron_expression',
-                    "Ekspresi cron '{$entry->cronExpression}' tidak valid.",
+                    "The cron expression '{$entry->cronExpression}' is not valid.",
                     'opsifin_crontab',
                     $entry->lineNo,
                 );
@@ -1072,7 +1072,7 @@ class LegacyImporter
                     FindingSeverity::Warning,
                     'duplicate_schedule',
                     sprintf(
-                        "Baris %d duplikat dengan schedule %s / %s / '%s' yang sudah ada (baris %s).",
+                        "Line %d duplicates the existing schedule %s / %s / '%s' (line %s).",
                         $entry->lineNo,
                         $client->code,
                         $template->key,
@@ -1132,13 +1132,13 @@ class LegacyImporter
             $client = $this->clientsByConf[$entry->clientKey] ?? null;
 
             $severity = $entry->isCommented ? FindingSeverity::Warning : FindingSeverity::Error;
-            $suffix = $entry->isCommented ? ' (baris sudah di-comment — kandidat dihapus)' : '';
+            $suffix = $entry->isCommented ? ' (the line is already commented out — a deletion candidate)' : '';
 
             if ($client === null) {
                 $this->finding(
                     $severity,
                     'gateway_client_unknown',
-                    "Baris memanggil gateway.sh dengan client '{$entry->clientKey}', tapi configs/{$entry->clientKey}.conf tidak ada.".$suffix,
+                    "The line calls gateway.sh with client '{$entry->clientKey}', but configs/{$entry->clientKey}.conf does not exist.".$suffix,
                     'opsifin_crontab',
                     $entry->lineNo,
                 );
@@ -1152,7 +1152,7 @@ class LegacyImporter
                 $this->finding(
                     $severity,
                     'gateway_task_unknown',
-                    "Task gateway '{$entry->taskKey}' tidak dikenali routing gateway.sh maupun jobs/.".$suffix,
+                    "Gateway task '{$entry->taskKey}' is recognised by neither the gateway.sh routing nor jobs/.".$suffix,
                     'opsifin_crontab',
                     $entry->lineNo,
                 );
@@ -1166,7 +1166,7 @@ class LegacyImporter
         // Entry yang sudah di-comment tidak berjalan, jadi cukup diperlakukan
         // sebagai sisa mati yang perlu dibersihkan — bukan kegagalan impor.
         $severity = $entry->isCommented ? FindingSeverity::Warning : FindingSeverity::Error;
-        $suffix = $entry->isCommented ? ' (baris sudah di-comment — kandidat dihapus)' : '';
+        $suffix = $entry->isCommented ? ' (the line is already commented out — a deletion candidate)' : '';
 
         $client = $this->clientsByFolder[$entry->clientKey] ?? null;
 
@@ -1174,7 +1174,7 @@ class LegacyImporter
             $this->finding(
                 $severity,
                 'client_folder_missing',
-                "Baris memanggil script di folder '{$entry->clientKey}/', tapi folder itu tidak ada di source.".$suffix,
+                "The line calls a script in folder '{$entry->clientKey}/', but that folder does not exist in the source.".$suffix,
                 'opsifin_crontab',
                 $entry->lineNo,
             );
@@ -1188,7 +1188,7 @@ class LegacyImporter
             $this->finding(
                 $severity,
                 'script_missing',
-                "Baris memanggil {$entry->clientKey}/{$entry->taskKey}.sh, tapi script itu tidak ada (atau gagal diparse).".$suffix,
+                "The line calls {$entry->clientKey}/{$entry->taskKey}.sh, but that script does not exist (or failed to parse).".$suffix,
                 'opsifin_crontab',
                 $entry->lineNo,
             );
@@ -1200,8 +1200,8 @@ class LegacyImporter
             $this->finding(
                 FindingSeverity::Warning,
                 'script_not_in_client_folder',
-                "Baris memanggil {$entry->clientKey}/{$entry->taskKey}.sh, tapi file itu tidak ada di folder client tersebut ".
-                '(template tetap dipakai dari client lain dengan nama script yang sama).',
+                "The line calls {$entry->clientKey}/{$entry->taskKey}.sh, but that file is not in the client folder ".
+                '(the template is still taken from another client with the same script name).',
                 'opsifin_crontab',
                 $entry->lineNo,
             );
@@ -1234,8 +1234,8 @@ class LegacyImporter
                 $severity,
                 'suspicious_interval',
                 sprintf(
-                    "Ekspresi '%s' berjalan di menit %s — jeda tidak seragam (%d menit lalu %d menit), ".
-                    'kemungkinan bukan maksud sebenarnya.',
+                    "Expression '%s' runs at minutes %s — the interval is uneven (%d minutes then %d minutes), ".
+                    'which is probably not what was intended.',
                     $entry->cronExpression,
                     implode(', ', range(0, 59, $step)),
                     $step,
@@ -1263,7 +1263,7 @@ class LegacyImporter
         $file = $this->sourcePath.'/opsifin_crontab';
 
         if (! is_file($file)) {
-            throw new RuntimeException("File opsifin_crontab tidak ditemukan di {$this->sourcePath}");
+            throw new RuntimeException("opsifin_crontab file not found in {$this->sourcePath}");
         }
 
         return $this->cronEntriesCache = $this->crontabParser->parse(file_get_contents($file) ?: '');

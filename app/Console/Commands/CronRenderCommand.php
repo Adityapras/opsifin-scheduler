@@ -11,27 +11,27 @@ use Throwable;
 class CronRenderCommand extends Command
 {
     protected $signature = 'cron:render
-        {--validate : Cek kelayakan tiap schedule aktif, tanpa menulis apa pun}
-        {--apply : Tulis ke file cron.d (dengan backup otomatis)}
-        {--output= : Tulis ke path ini alih-alih file cron.d sebenarnya}
-        {--show : Tampilkan isi lengkap hasil render}';
+        {--validate : Check every enabled schedule without writing anything}
+        {--apply : Write to the cron.d file (with an automatic backup)}
+        {--output= : Write to this path instead of the real cron.d file}
+        {--show : Print the full rendered output}';
 
-    protected $description = 'Generate baris crontab dari tabel schedules';
+    protected $description = 'Generate crontab lines from the schedules table';
 
     public function handle(CrontabRenderer $renderer, CrontabDeployer $deployer): int
     {
         $target = $this->option('output') ?: $deployer->targetPath();
 
         $this->line('Target   : '.$target);
-        $this->line('Schedule : '.$renderer->enabledSchedules()->count().' aktif');
+        $this->line('Schedules: '.$renderer->enabledSchedules()->count().' enabled');
         $this->newLine();
 
         $problems = $renderer->validate();
 
         if ($problems !== []) {
-            $this->error('Validasi gagal untuk '.count($problems).' schedule:');
+            $this->error('Validation failed for '.count($problems).' schedules:');
             $this->table(
-                ['ID', 'Client', 'Task', 'Masalah'],
+                ['ID', 'Client', 'Task', 'Problem'],
                 array_map(fn ($p) => [
                     $p['schedule']->id,
                     $p['schedule']->client->code,
@@ -41,12 +41,12 @@ class CronRenderCommand extends Command
             );
 
             if ($this->option('apply')) {
-                $this->error('Deploy dibatalkan — perbaiki dulu masalah di atas.');
+                $this->error('Deploy cancelled — fix the problems above first.');
 
                 return self::FAILURE;
             }
         } else {
-            $this->info('Validasi: semua schedule aktif lolos.');
+            $this->info('Validation: every enabled schedule passed.');
         }
 
         if ($this->option('validate')) {
@@ -66,8 +66,8 @@ class CronRenderCommand extends Command
             File::put($staging, $deployer->preview($target));
 
             $this->newLine();
-            $this->info('Staging ditulis ke: '.$staging);
-            $this->comment('Jalankan ulang dengan --apply untuk men-deploy.');
+            $this->info('Staging written to: '.$staging);
+            $this->comment('Run again with --apply to deploy.');
 
             return self::SUCCESS;
         }
@@ -81,9 +81,9 @@ class CronRenderCommand extends Command
         }
 
         $this->newLine();
-        $this->info('Deployed  : '.$result['path'].' ('.$result['bytes'].' byte)');
-        $this->line('Backup    : '.($result['backup'] ?? '(file sebelumnya kosong)'));
-        $this->comment('cron.d dibaca ulang otomatis oleh daemon cron — tidak perlu reload manual.');
+        $this->info('Deployed  : '.$result['path'].' ('.$result['bytes'].' bytes)');
+        $this->line('Backup    : '.($result['backup'] ?? '(the previous file was empty)'));
+        $this->comment('cron.d is re-read automatically by the cron daemon — no manual reload needed.');
 
         return self::SUCCESS;
     }
@@ -93,7 +93,7 @@ class CronRenderCommand extends Command
         $diff = $deployer->diff($target);
 
         if ($diff === []) {
-            $this->info('Diff: tidak ada perubahan.');
+            $this->info('Diff: no changes.');
 
             return;
         }
@@ -101,7 +101,7 @@ class CronRenderCommand extends Command
         $added = count(array_filter($diff, fn ($d) => $d['type'] === 'added'));
         $removed = count($diff) - $added;
 
-        $this->line("Diff: <fg=green>+{$added}</> <fg=red>-{$removed}</> baris");
+        $this->line("Diff: <fg=green>+{$added}</> <fg=red>-{$removed}</> lines");
         $this->newLine();
 
         foreach ($diff as $entry) {

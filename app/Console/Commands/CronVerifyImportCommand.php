@@ -21,17 +21,17 @@ use Illuminate\Support\Collection;
 class CronVerifyImportCommand extends Command
 {
     protected $signature = 'cron:verify-import
-        {--source= : Folder repo cron legacy (default: config opsifin_cron.source_path)}
-        {--limit=0 : Batasi jumlah perbedaan yang ditampilkan (0 = semua)}';
+        {--source= : Legacy cron repo folder (default: config opsifin_cron.source_path)}
+        {--limit=0 : Limit how many differences are shown (0 = all)}';
 
-    protected $description = 'Bandingkan request hasil impor dengan script legacy aslinya';
+    protected $description = 'Compare the imported requests against the original legacy scripts';
 
     public function handle(CurlParser $parser, ShellConfigParser $configParser): int
     {
         $source = rtrim($this->option('source') ?: config('opsifin_cron.source_path'), '/');
 
         if (! is_dir($source)) {
-            $this->error("Source path tidak ditemukan: {$source}");
+            $this->error("Source path not found: {$source}");
 
             return self::FAILURE;
         }
@@ -92,10 +92,10 @@ class CronVerifyImportCommand extends Command
         $bar->finish();
         $this->newLine(2);
 
-        $this->table(['Hasil', 'Jumlah'], [
-            ['Cocok persis dengan script legacy', $matched],
-            ['Berbeda', count($differences)],
-            ['Dilewati (script tidak ada / tidak bisa diparse)', $skipped],
+        $this->table(['Result', 'Count'], [
+            ['Exact match with the legacy script', $matched],
+            ['Different', count($differences)],
+            ['Skipped (script missing / could not be parsed)', $skipped],
         ]);
 
         if ($differences !== []) {
@@ -103,8 +103,8 @@ class CronVerifyImportCommand extends Command
             $shown = $limit > 0 ? array_slice($differences, 0, $limit) : $differences;
 
             $this->newLine();
-            $this->warn('Perbedaan:');
-            $this->table(['Script', 'Beda'], $shown);
+            $this->warn('Differences:');
+            $this->table(['Script', 'Difference'], $shown);
         }
 
         return $differences === [] ? self::SUCCESS : self::FAILURE;
@@ -147,7 +147,7 @@ class CronVerifyImportCommand extends Command
             $expected = 'Basic '.base64_encode($curl->authUsername.':'.$curl->authPassword);
 
             if ($client->authorizationHeader() !== $expected) {
-                $diffs[] = 'Authorization berbeda';
+                $diffs[] = 'Authorization differs';
             }
         }
 
@@ -155,7 +155,7 @@ class CronVerifyImportCommand extends Command
             $resolved = strtr($headers['SecretKey'] ?? '', ['{{client.secret_key}}' => (string) $client->auth_secret_key]);
 
             if ($resolved !== $curl->secretKey) {
-                $diffs[] = 'SecretKey berbeda';
+                $diffs[] = 'SecretKey differs';
             }
         }
 

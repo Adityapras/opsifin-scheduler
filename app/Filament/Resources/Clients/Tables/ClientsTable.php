@@ -24,13 +24,13 @@ class ClientsTable
             ->defaultSort('code')
             ->columns([
                 TextColumn::make('code')
-                    ->label('Kode')
+                    ->label('Code')
                     ->searchable()
                     ->sortable()
                     ->weight('bold'),
 
                 TextColumn::make('name')
-                    ->label('Nama')
+                    ->label('Name')
                     ->searchable()
                     ->limit(30),
 
@@ -48,13 +48,13 @@ class ClientsTable
                     ->searchable(),
 
                 TextColumn::make('schedules_count')
-                    ->label('Schedule')
+                    ->label('Schedules')
                     ->counts('schedules')
                     ->alignEnd()
                     ->sortable(),
 
                 TextColumn::make('active_schedules_count')
-                    ->label('Aktif')
+                    ->label('Enabled')
                     ->counts(['schedules as active_schedules_count' => fn ($q) => $q->where('is_enabled', true)])
                     ->alignEnd()
                     ->badge()
@@ -71,21 +71,21 @@ class ClientsTable
                     ->tooltip(fn (Client $record) => $record->review_notes),
 
                 IconColumn::make('is_active')
-                    ->label('Aktif')
+                    ->label('Active')
                     ->boolean(),
             ])
             ->filters([
-                TernaryFilter::make('is_active')->label('Status aktif'),
+                TernaryFilter::make('is_active')->label('Active'),
 
-                TernaryFilter::make('needs_review')->label('Butuh review'),
+                TernaryFilter::make('needs_review')->label('Needs review'),
 
                 Filter::make('has_active_schedules')
-                    ->label('Punya schedule aktif')
+                    ->label('Has enabled schedules')
                     ->query(fn ($query) => $query->whereHas('schedules', fn ($q) => $q->where('is_enabled', true))),
             ])
             ->recordActions([
                 Action::make('test')
-                    ->label('Tes koneksi')
+                    ->label('Test connection')
                     ->icon('heroicon-o-signal')
                     ->color('gray')
                     ->authorize(fn (Client $record) => auth()->user()->can('test', $record))
@@ -105,7 +105,7 @@ class ClientsTable
             ->toolbarActions([
                 BulkActionGroup::make([
                     BulkAction::make('activate')
-                        ->label('Aktifkan')
+                        ->label('Activate')
                         ->icon('heroicon-o-check')
                         ->requiresConfirmation()
                         ->authorize(fn () => auth()->user()->canOperate())
@@ -113,11 +113,11 @@ class ClientsTable
                         ->deselectRecordsAfterCompletion(),
 
                     BulkAction::make('deactivate')
-                        ->label('Nonaktifkan')
+                        ->label('Deactivate')
                         ->icon('heroicon-o-x-mark')
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->modalDescription('Client nonaktif tidak ikut di-render ke crontab pada deploy berikutnya.')
+                        ->modalDescription('Inactive clients are left out of the crontab on the next deploy.')
                         ->authorize(fn () => auth()->user()->canOperate())
                         ->action(fn (Collection $records) => $records->each->update(['is_active' => false]))
                         ->deselectRecordsAfterCompletion(),

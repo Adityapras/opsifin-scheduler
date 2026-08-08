@@ -2,13 +2,18 @@
 
 namespace Tests\Feature;
 
+use App\Enums\LockMode;
 use App\Enums\UserRole;
+use App\Filament\Pages\ScheduleMatrix;
+use App\Filament\Resources\Clients\Pages\EditClient;
+use App\Filament\Resources\Schedules\Pages\CreateSchedule;
 use App\Models\Client;
 use App\Models\Run;
 use App\Models\Schedule;
 use App\Models\TaskTemplate;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -89,6 +94,10 @@ class AdminPanelTest extends TestCase
             'runs' => ['/admin/runs'],
             'matrix' => ['/admin/schedule-matrix'],
             'deploy' => ['/admin/deploy-crontab'],
+            'alerts' => ['/admin/alerts'],
+            'alert rules' => ['/admin/alert-rules'],
+            'alert rule create' => ['/admin/alert-rules/create'],
+            'dashboard' => ['/admin'],
         ];
     }
 
@@ -145,5 +154,81 @@ class AdminPanelTest extends TestCase
 
         $this->actingAs($admin)->get('/admin/runs/create')->assertNotFound();
         $this->actingAs($admin)->get('/admin/runs/'.Run::first()->id.'/edit')->assertNotFound();
+    }
+
+    /**
+     * Sel kosong di matrix menautkan ke halaman create dengan client & task di
+     * query string. Default field lain harus tetap terpasang.
+     */
+    public function test_create_schedule_prefills_the_combination_from_the_matrix(): void
+    {
+        $schedule = $this->seedDomain();
+        $schedule->delete();
+
+        $this->actingAs($this->user());
+
+        $state = Livewire::withQueryParams([
+            'client_id' => $schedule->client_id,
+            'task_template_id' => $schedule->task_template_id,
+        ])
+            ->test(CreateSchedule::class)
+            ->assertFormSet([
+                'client_id' => $schedule->client_id,
+                'task_template_id' => $schedule->task_template_id,
+                'lock_key' => 'gn.repost',
+            ]);
+
+        // Prefill tidak boleh menghapus default milik field lain.
+        $state->assertFormSet([
+            'timezone' => config('opsifin_cron.default_timezone'),
+            'lock_mode' => LockMode::Skip->value,
+        ]);
+    }
+
+    /**
+     * $hidden di model Client membuang kredensial dari attributesToArray(), yang
+     * dipakai Filament untuk mengisi form. Tanpa penanganan khusus, field-nya
+     * kosong dan menyimpan form menghapus kredensial yang tersimpan.
+     */
+    public function test_edit_client_loads_and_preserves_the_credentials(): void
+    {
+        $client = $this->seedDomain()->client;
+
+        Livewire::actingAs($this->user())
+            ->test(EditClient::class, ['record' => $client->getRouteKey()])
+            ->assertFormSet([
+                'auth_username' => 'rest_gn',
+                'auth_secret' => 'rahasia',
+            ])
+            ->fillForm(['name' => 'Golden Nusa Persada'])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $client->refresh();
+
+        $this->assertSame('Golden Nusa Persada', $client->name);
+        $this->assertSame('rahasia', $client->auth_secret);
+    }
+
+    public function test_matrix_cell_toggle_flips_the_schedule(): void
+    {
+        $schedule = $this->seedDomain();
+
+        Livewire::actingAs($this->user())
+            ->test(ScheduleMatrix::class)
+            ->call('toggle', $schedule->client_id, $schedule->task_template_id);
+
+        $this->assertFalse($schedule->fresh()->is_enabled);
+    }
+
+    public function test_matrix_toggle_is_refused_for_a_viewer(): void
+    {
+        $schedule = $this->seedDomain();
+
+        Livewire::actingAs($this->user(UserRole::Viewer))
+            ->test(ScheduleMatrix::class)
+            ->call('toggle', $schedule->client_id, $schedule->task_template_id);
+
+        $this->assertTrue($schedule->fresh()->is_enabled);
     }
 }
