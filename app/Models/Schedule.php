@@ -2,14 +2,13 @@
 
 namespace App\Models;
 
-use App\Enums\HttpMethod;
 use App\Enums\LegacyPattern;
-use App\Enums\LockMode;
 use Cron\CronExpression;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 class Schedule extends Model
@@ -21,15 +20,29 @@ class Schedule extends Model
     protected function casts(): array
     {
         return [
-            'lock_mode' => LockMode::class,
             'legacy_pattern' => LegacyPattern::class,
             'is_enabled' => 'boolean',
+            'prevent_overlap' => 'boolean',
             'legacy_was_commented' => 'boolean',
             'legacy_had_flock' => 'boolean',
             'needs_review' => 'boolean',
-            'last_run_at' => 'datetime',
             'next_run_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Schedule $schedule): void {
+            if (! $schedule->is_enabled) {
+                $schedule->next_run_at = null;
+
+                return;
+            }
+
+            if ($schedule->next_run_at === null || $schedule->isDirty(['cron_expression', 'timezone', 'is_enabled'])) {
+                $schedule->next_run_at = $schedule->calculateNextRunAt();
+            }
+        });
     }
 
     public function client(): BelongsTo
@@ -47,71 +60,9 @@ class Schedule extends Model
         return $this->hasMany(Run::class);
     }
 
-    public function override(): ?ClientTaskOverride
+    public function latestRun(): HasOne
     {
-        return ClientTaskOverride::query()
-            ->where('client_id', $this->client_id)
-            ->where('task_template_id', $this->task_template_id)
-            ->first();
-    }
-
-    /**
-     * Gabungkan template + override client menjadi satu definisi request final.
-     *
-     * @return array{method: HttpMethod, url: string, body: ?string, headers: array<string, string>, timeout: int, connect_timeout: int, retries: int}
-     */
-    public function resolveRequest(): array
-    {
-        $client = $this->client;
-        $template = $this->taskTemplate;
-        $override = $this->override();
-
-        $method = $override?->method_override
-            ? HttpMethod::from($override->method_override)
-            : $template->http_method;
-
-        $baseUrl = rtrim($override?->base_url_override ?: $client->base_url, '/');
-        $path = $override?->path_override ?: $template->path_template;
-
-        $headers = $this->substitutePlaceholders(
-            array_merge($template->headers ?? [], $override?->headers_override ?? []),
-            $client,
-        );
-
-        if ($auth = $client->authorizationHeader()) {
-            $headers['Authorization'] = $auth;
-        }
-
-        return [
-            'method' => $method,
-            'url' => $baseUrl.'/'.ltrim($path, '/'),
-            'body' => $override?->body_override ?? $template->body_template,
-            'headers' => $headers,
-            'timeout' => $override?->timeout_override ?? $template->default_timeout_sec,
-            'connect_timeout' => $override?->connect_timeout_override ?? $template->default_connect_timeout_sec,
-            'retries' => $template->default_retries,
-        ];
-    }
-
-    /**
-     * Header seperti `SecretKey` nilainya berbeda tiap client, jadi template
-     * menyimpan placeholder dan nilainya baru diisi di sini.
-     *
-     * @param  array<string, string>  $headers
-     * @return array<string, string>
-     */
-    private function substitutePlaceholders(array $headers, Client $client): array
-    {
-        $replacements = [
-            '{{client.secret_key}}' => (string) $client->auth_secret_key,
-            '{{client.username}}' => (string) $client->auth_username,
-            '{{client.code}}' => $client->code,
-        ];
-
-        return array_map(
-            fn (string $value) => strtr($value, $replacements),
-            $headers,
-        );
+        return $this->hasOne(Run::class)->ofMany('scheduled_for', 'max');
     }
 
     public function isValidCron(): bool
@@ -137,63 +88,56 @@ class Schedule extends Model
         );
     }
 
-    /**
-     * Jadwal terakhir yang seharusnya sudah lewat. Dipakai deteksi missed run:
-     * kalau waktu ini sudah terlampaui tapi tidak ada run yang tercatat,
-     * berarti cron-nya yang tidak jalan, bukan job-nya yang gagal.
-     */
-    public function previousRun(): ?Carbon
+    public function previousRun(?Carbon $now = null): ?Carbon
     {
         if (! $this->isValidCron()) {
             return null;
         }
 
         $tz = $this->timezone ?: config('app.timezone');
-        $cron = new CronExpression($this->cron_expression);
+        $now ??= Carbon::now($tz);
 
-        return Carbon::instance($cron->getPreviousRunDate(Carbon::now($tz), 0, true, $tz))
-            ->setTimezone($tz);
+        return Carbon::instance((new CronExpression($this->cron_expression))
+            ->getPreviousRunDate($now->copy()->setTimezone($tz), 0, true, $tz));
     }
 
-    /**
-     * Kolom next_run_at menyimpan instan dalam timezone aplikasi.
-     *
-     * nextRuns() mengembalikan Carbon yang sudah digeser ke timezone schedule,
-     * sedangkan cast `datetime` menulis jam dindingnya apa adanya tanpa konversi
-     * — tanpa penyesuaian di bawah, 21:00 WIB tersimpan sebagai "21:00" lalu
-     * dibaca kembali sebagai 21:00 UTC dan tampil sebagai 04:00 WIB.
-     */
-    public function recalculateNextRun(): void
+    public function calculateNextRunAt(?Carbon $after = null): ?Carbon
     {
-        $next = $this->nextRuns(1)[0] ?? null;
+        if (! $this->isValidCron()) {
+            return null;
+        }
 
-        $this->next_run_at = $next?->setTimezone(config('app.timezone'));
+        $timezone = $this->timezone ?: config('opsifin_cron.default_timezone');
+        $after ??= now();
+
+        return Carbon::instance((new CronExpression($this->cron_expression))
+            ->getNextRunDate($after->copy()->setTimezone($timezone), 0, false, $timezone))
+            ->utc();
     }
 
-    /**
-     * Path lock file absolut untuk schedule ini.
-     */
-    public function lockFilePath(): string
+    public function isRunnable(): bool
     {
-        return rtrim(config('opsifin_cron.lock_dir'), '/').'/'.$this->lock_key.'.lock';
+        $this->loadMissing(['client', 'taskTemplate']);
+
+        return $this->is_enabled
+            && (bool) $this->client?->is_active
+            && (bool) $this->taskTemplate?->is_active;
     }
 
-    /**
-     * Lock lapis luar yang dipasang di baris crontab. File-nya sengaja berbeda
-     * dari lockFilePath() agar lock runner tidak bentrok dengan induknya sendiri.
-     */
-    public function cronLockFilePath(): string
+    public function pausedReason(): ?string
     {
-        return rtrim(config('opsifin_cron.lock_dir'), '/').'/'.$this->lock_key.'.cron.lock';
+        $this->loadMissing(['client', 'taskTemplate']);
+
+        return match (true) {
+            ! $this->is_enabled => 'schedule',
+            ! $this->client?->is_active => 'client',
+            ! $this->taskTemplate?->is_active => 'task',
+            default => null,
+        };
     }
 
-    /**
-     * Argumen flock sesuai mode lock. Selalu ada — tidak ada schedule tanpa lock.
-     */
-    public function flockArguments(): string
+    public static function materializationKey(int $scheduleId, Carbon $scheduledFor): string
     {
-        return $this->lock_mode === LockMode::Wait
-            ? '-w '.max(1, (int) $this->lock_wait_sec)
-            : '-n';
+        return hash('sha256', 'schedule:'.$scheduleId.':'.$scheduledFor->copy()->utc()->format('Y-m-d\TH:i:00\Z'));
     }
 }

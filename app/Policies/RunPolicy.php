@@ -34,4 +34,14 @@ class RunPolicy
     {
         return false;
     }
+
+    public function retry(User $user, Run $run): bool
+    {
+        return $user->canOperate();
+    }
+
+    public function cancel(User $user, Run $run): bool
+    {
+        return $user->canOperate();
+    }
 }

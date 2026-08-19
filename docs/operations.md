@@ -1,242 +1,209 @@
-# Runbook Operasional — Opsifin Cron
+# Operations Runbook
 
-Prosedur harian setelah aplikasi berjalan. Untuk pemasangan awal dan cutover
-bertahap, lihat `docs/cutover.md`.
+Runbook ini untuk production VPS manual. Ganti path dan nama service bila
+berbeda dari template repository.
 
----
+## 1. Pemeriksaan rutin
 
-## Aturan yang berlaku di semua prosedur
-
-**Perubahan di database tidak berlaku sampai crontab di-deploy.** Menyalakan
-schedule di panel hanya mengubah baris di tabel; daemon cron baru tahu setelah
-`cron:render --apply`. Setiap prosedur di bawah yang menyentuh schedule selalu
-diakhiri deploy.
-
-**Tiga gerbang.** Sebuah schedule berjalan hanya kalau `schedules.is_enabled`,
-`clients.is_active`, dan `task_templates.is_active` ketiganya aktif.
-
----
-
-## 1. Menambah client baru
-
-1. **Clients → New client.**
-
-| Field | Isi |
-| --- | --- |
-| Code | Huruf, angka, titik, strip. Dipakai di lock key dan komentar crontab — pilih yang pendek. |
-| Base URL | Tanpa trailing slash. Path diambil dari task template. |
-| Timezone | Harus sama dengan seluruh client lain. Satu file `cron.d` hanya punya satu `CRON_TZ`. |
-| Auth type | Basic untuk hampir semua client Opsifin. |
-| Secret key | Hanya untuk task BCA/remittance. Kosongkan bila tidak dipakai. |
-| Active | **Biarkan mati** sampai langkah 4 selesai. |
-
-2. **Uji kredensial** — tombol **Test connection** di baris client tersebut.
-   Yang dicari status `Host reachable`. Kalau `Credentials rejected`, username
-   atau password salah; kalau `Cannot connect`, base URL atau jaringannya.
-
-3. **Buat schedule-nya.** Dua cara:
-   - **Matrix** → cari baris client, klik sel kosong pada task yang diinginkan.
-     Form terbuka dengan client, task, dan lock key sudah terisi.
-   - **Schedules → New schedule** lalu pilih manual.
-
-   Isi ekspresi cron; preview di bawahnya menampilkan 5 jadwal berikutnya. Kalau
-   muncul peringatan *uneven interval*, ekspresinya seperti `*/7` yang jedanya
-   tidak seragam — hampir selalu bukan yang dimaksud.
-
-4. **Aktifkan dan deploy.**
+Jalankan dari `/var/www/opsifin-scheduler`:
 
 ```bash
-php artisan cron:cutover-status <code>   # harus "No blockers"
-php artisan cron:render --validate
-sudo php artisan cron:render --apply
+sudo -u opsifin /usr/bin/php8.4 artisan schedule:list
+sudo -u opsifin /usr/bin/php8.4 artisan queue:failed
+sudo supervisorctl status opsifin-scheduler-worker:*
+sudo systemctl status cron nginx php8.4-fpm mysql --no-pager
 ```
 
-5. **Verifikasi** baris client itu muncul di `/etc/cron.d/opsifin`, lalu tunggu
-   eksekusi terjadwal pertama dan cek di menu **Runs**.
+Di UI, periksa:
 
----
+- queued tidak menumpuk lama;
+- running tidak melewati timeout task + margin;
+- failure rate dan failed terbaru;
+- schedule aktif memiliki `next_run_at`;
+- schedule paused tidak memiliki `next_run_at`.
 
-## 2. Menambah task template baru
+## 2. Log map
 
-Task template adalah definisi request yang dipakai bersama banyak client. Buat
-template baru hanya kalau endpoint-nya memang berbeda — kalau yang berbeda cuma
-path untuk satu client, pakai override.
-
-1. **Task templates → New task template.**
-
-| Field | Catatan |
+| Log | Isi |
 | --- | --- |
-| Key | snake_case. Muncul di lock key dan komentar crontab. |
-| Path | Diawali `/`. Prefix `{base_url}` diisi dari masing-masing client. |
-| Body | Dikirim apa adanya dengan `Content-Type: application/json`. |
-| Extra headers | `Authorization`, `Content-Type`, `Accept` diisi otomatis. Pakai `{{client.secret_key}}`, `{{client.username}}`, atau `{{client.code}}` untuk nilai yang berbeda tiap client. |
-| Timeout / connect timeout | Wajib. Tidak satu pun script lama punya ini. |
-| Retries | 0 berarti tidak diulang. Jangan diisi untuk task yang tidak idempoten. |
+| UI **Execution logs** | Status request: queued/running/succeeded/failed/skipped, HTTP status, duration, response, dan error |
+| UI **Audit history** | Perubahan konfigurasi client, job template, dan schedule oleh user |
+| `storage/logs/laravel.log` | Exception aplikasi/importer/executor |
+| `/var/log/opsifin-scheduler/worker.log` | Lifecycle queue worker |
+| `/var/log/opsifin-scheduler/scheduler.log` | Output system cron dan dispatcher |
+| `/var/log/nginx/opsifin-scheduler.error.log` | Routing/PHP upstream error |
+| PHP-FPM journal/log | Fatal error dan worker FPM |
 
-2. **Periksa preview.** Pilih satu client di bagian Preview; yang muncul adalah
-   perintah `curl` setara lengkap dengan header sebenarnya. Cocokkan dengan
-   script legacy sebelum dipakai.
+Jangan menyalin `.env`, Authorization header, atau secret client ke tiket.
 
-3. **Pasang ke client** lewat Matrix: kolom task baru itu → menu ⋮ →
-   *Enable for all clients* kalau memang berlaku untuk semua, atau klik sel
-   satu per satu.
+## 3. Queue menumpuk
 
-4. `cron:render --validate` lalu `--apply`.
+1. Pastikan worker `RUNNING`:
 
----
+   ```bash
+   sudo supervisorctl status opsifin-scheduler-worker:*
+   ```
 
-## 3. Membuat alert rule
+2. Periksa log worker dan Laravel.
+3. Pastikan database dapat diakses:
 
-Rule tanpa client/task/schedule berlaku untuk semua schedule. Mengisi salah satu
-field mempersempit sasarannya.
+   ```bash
+   sudo -u opsifin /usr/bin/php8.4 artisan about --only=environment
+   ```
 
-| Kondisi | Kapan dipakai |
-| --- | --- |
-| **Run failed** | Task kritis yang setiap kegagalannya harus diketahui. |
-| **Run timed out** | Task yang lambatnya berarti masalah di sisi endpoint. |
-| **N consecutive failures** | Task yang wajar gagal sesekali. Threshold 3 meredam noise. |
-| **Scheduled run never happened** | **Pasang satu rule global.** Ini satu-satunya yang mendeteksi cron mati atau crontab belum di-deploy. |
+4. Restart worker secara graceful:
 
-**Cooldown** menentukan jarak minimum antar alert dari rule yang sama untuk
-schedule yang sama. Tanpa cooldown, job yang gagal tiap 6 menit akan mengirim
-notifikasi tiap 6 menit. Default 60 menit.
+   ```bash
+   sudo -u opsifin /usr/bin/php8.4 artisan queue:restart
+   sudo supervisorctl status opsifin-scheduler-worker:*
+   ```
 
-Rekomendasi minimum untuk mulai:
+Jangan menghapus tabel `jobs` untuk memperbaiki backlog. Pause schedule yang
+menambah beban jika endpoint tujuan bermasalah.
 
-1. `Missed run` — global, grace 15 menit, cooldown 120 menit.
-2. `Consecutive failures` — global, threshold 3, cooldown 60 menit.
-3. `Run failed` — dibatasi ke client besar saja (`gn`, `aladin`, `anta`), cooldown 60 menit.
+## 4. Schedule tidak dispatch
 
-Alert mendarat di lonceng notifikasi dan di menu **Alerts**. Belum ada channel
-keluar; kalau nanti dipasang, cukup ditambahkan di
-`app/Services/Alerting/AlertDispatcher.php` tanpa menyentuh rule.
+1. Periksa system cron:
 
----
+   ```bash
+   sudo systemctl status cron --no-pager
+   sudo grep opsifin-scheduler /etc/cron.d/opsifin-scheduler
+   ```
 
-## 4. Prosedur incident
+2. Jalankan entry point sekali sebagai user aplikasi:
 
-### 4.1 Satu job gagal terus
+   ```bash
+   sudo -u opsifin /usr/bin/php8.4 artisan schedule:run -v
+   ```
+
+3. Periksa apakah client, template, dan schedule aktif.
+4. Periksa cron/timezone serta `next_run_at` di UI.
+5. Periksa `scheduler.log` dan `laravel.log`.
+
+Setelah downtime, sistem hanya membuat maksimal satu occurrence terbaru per
+schedule. Sistem tidak melakukan replay seluruh menit yang terlewat.
+
+## 5. Run stuck di running
+
+Dispatcher berikutnya melakukan recovery ketika
+`execution_deadline_at < now()`. Bila ingin memastikan root cause:
+
+1. periksa apakah process worker masih hidup;
+2. periksa timeout/connection endpoint;
+3. tunggu timeout task + `CRON_EXECUTION_MARGIN_SEC`;
+4. jalankan `schedule:run -v` sekali bila system cron sempat mati;
+5. pastikan run menjadi failed dan slot schedule terlepas.
+
+Jangan mengubah `running_run_id` langsung di database selama worker mungkin
+masih mengirim request.
+
+Untuk perilaku seperti `flock -n`, pastikan **Skip overlapping run** aktif pada
+schedule. Implementasinya adalah atomic database slot, bukan file lock, agar
+tetap benar saat worker lebih dari satu.
+
+## 6. Endpoint client sedang bermasalah
+
+1. Pause assignment terkait, gunakan bulk Pause bila banyak.
+2. Biarkan request yang sudah running selesai/timeout.
+3. Perbaiki endpoint atau credential.
+4. Gunakan Run now pada satu client.
+5. Jika sukses, resume bertahap.
+6. Retry manual hanya untuk failure yang aman diulang.
+
+## 7. Login admin bermasalah
 
 ```bash
-php artisan cron:run <schedule_id> --dry-run   # lihat request finalnya
+sudo -u opsifin /usr/bin/php8.4 artisan optimize:clear
+sudo -u opsifin /usr/bin/php8.4 artisan route:list --path=admin
+sudo tail -n 100 /var/log/nginx/opsifin-scheduler.error.log
+sudo tail -n 100 /var/www/opsifin-scheduler/storage/logs/laravel.log
 ```
 
-Urutan pemeriksaan:
+Pastikan Nginx root mengarah ke `public`, route `/livewire-*` diteruskan ke
+Laravel, database session/cache dapat ditulis, dan URL diakses menggunakan
+domain yang sama dengan `APP_URL`.
 
-1. **Runs → filter client → Problems only.** Lihat HTTP status dan potongan body.
-2. **HTTP 401/403** → kredensial. Buka Clients, pakai **Test connection**.
-   Kalau ditolak, kredensialnya memang berubah di sisi endpoint.
-3. **HTTP 404** → path template atau override salah. Bandingkan dengan preview
-   `curl` di Task templates.
-4. **Timeout** → endpoint lambat. Naikkan `default_timeout_sec` template, atau
-   pasang override khusus client itu kalau hanya dia yang lambat.
-5. **Connection error** → jaringan atau DNS dari VPS ke host client.
-
-Meredam sementara tanpa mengubah crontab: matikan schedule-nya di Matrix, lalu
-`sudo php artisan cron:render --apply`.
-
-### 4.2 Job tidak jalan sama sekali
-
-Gejalanya alert *missed run*, atau widget **Overdue schedules** di dashboard
-terisi. Yang gagal biasanya bukan job-nya, tapi jalur eksekusinya.
+## 8. Deploy aplikasi
 
 ```bash
-# 1. Apakah barisnya benar-benar ada di crontab?
-grep <client_code> /etc/cron.d/opsifin
-
-# 2. Apakah cron memicunya?
-grep CRON /var/log/syslog | tail -20
-
-# 3. Apakah runner-nya error?
-tail -50 /var/log/opsifin-cron/runner.log
-
-# 4. Apakah database dan aplikasi sehat?
-php artisan cron:render --validate
+sudo -u opsifin git pull --ff-only
+sudo -u opsifin composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+sudo -u opsifin npm ci
+sudo -u opsifin npm run build
+sudo -u opsifin /usr/bin/php8.4 artisan migrate --force
+sudo -u opsifin /usr/bin/php8.4 artisan optimize
+sudo -u opsifin /usr/bin/php8.4 artisan queue:restart
+sudo systemctl reload php8.4-fpm
+sudo systemctl reload nginx
 ```
 
-| Temuan | Artinya |
-| --- | --- |
-| Baris tidak ada di `cron.d` | Perubahan belum di-deploy. Jalankan `--apply`. |
-| Baris ada, syslog kosong | Daemon cron mati, atau file tidak dimiliki root / mode-nya salah. Cek `ls -l /etc/cron.d/opsifin` — harus `root:root` dan `644`. |
-| Syslog ada, `runner.log` kosong | PHP binary atau path artisan di `.env` salah. |
-| `runner.log` berisi error | Baca pesannya; biasanya database atau permission direktori lock. |
+Gunakan maintenance mode bila migration/asset change tidak backward compatible.
+Selalu backup database sebelum migration production.
 
-### 4.3 Lock tersangkut
+## 9. Retensi dan backup
 
-Gejalanya banyak run berstatus `Skipped (lock)` sementara tidak ada eksekusi yang
-benar-benar berjalan.
+Preview retensi:
 
 ```bash
-ls -l /var/lock/opsifin/            # lihat lock file
-fuser -v /var/lock/opsifin/<lock_key>.lock   # ada proses yang memegangnya?
+sudo -u opsifin /usr/bin/php8.4 artisan cron:purge-runs --dry-run
 ```
 
-Kalau tidak ada proses yang memegangnya, lock file boleh dihapus. **Jangan
-menghapus lock yang masih dipegang proses** — itu justru mengizinkan eksekusi
-ganda, hal yang lock ini cegah.
+Scheduler menjalankan purge setiap hari pukul 03:00. Queued dan running tidak
+dihapus.
 
-Penyebab paling sering: satu eksekusi menggantung karena timeout terlalu besar.
-Widget **Slowest tasks** di dashboard menandai task yang eksekusi terlambatnya
-lebih dari 3× rata-rata — itu kandidat pertamanya.
+Backup minimal mencakup:
 
-### 4.4 Deploy crontab bermasalah
+- dump database terenkripsi/akses terbatas;
+- `.env` dan key management secara terpisah;
+- konfigurasi Nginx, Supervisor, cron, dan TLS;
+- release/tag Git yang sedang berjalan.
+
+## 10. External monitoring
+
+Pantau dari host di luar VPS:
+
+- HTTPS `/admin/login` merespons;
+- system cron hidup;
+- Supervisor workers running;
+- disk/database capacity;
+- jumlah queued/failed dan umur run terakhir.
+
+Aplikasi sengaja tidak mempunyai watchdog internal karena watchdog yang berada
+di server sama tidak dapat mendeteksi server mati total.
+
+## 11. Import dan cutover legacy
+
+Bagian ini hanya untuk import awal pada environment persiapan. VPS production
+yang menerima dump database existing **tidak menjalankan import ulang**. Gunakan
+prosedur [database-migration-vps.md](database-migration-vps.md), pertahankan
+`APP_KEY` source, lalu jadikan database production sebagai sumber kebenaran.
+
+Importer tidak mengaktifkan schedule dan tidak mengubah legacy cron.
+Task template hanya dibentuk dari `jobs/*.sh`; script pada folder client hanya
+digunakan untuk memetakan assignment dan mendeteksi perbedaan legacy.
+
+Dry-run:
 
 ```bash
-php artisan cron:rollback --list
-sudo php artisan cron:rollback         # ke backup terakhir
+php artisan cron:import --fresh --dry-run --report=/tmp/lean-import.md
 ```
 
-Rollback ikut di-backup lebih dulu, jadi bisa dibatalkan lagi. Baris manual di
-luar blok `# BEGIN/END OPSIFIN-CRON MANAGED BLOCK` tidak pernah tersentuh.
-
-Kalau `--apply` menolak dengan `No permission to write to /etc/cron.d/opsifin`,
-itu memang perilaku yang diharapkan dari tombol Deploy di UI — penulisan harus
-lewat SSH dengan `sudo`. Lihat `docs/cutover.md` §6.
-
-### 4.5 Aplikasi tidak menampilkan perubahan
+Apply `--fresh` menghapus Clients, Job Templates, Schedules, dan Runs sebelum
+import ulang. Backup dan persetujuan eksplisit wajib tersedia sebelum command:
 
 ```bash
-npm run build                        # kalau ada perubahan blade/CSS di Filament
-sudo systemctl reload php8.3-fpm     # bersihkan OPcache
+php artisan cron:import --fresh --report=storage/app/import-reports/lean-apply.md
+php artisan cron:verify-import
+php artisan cron:cutover-status
 ```
 
-`config:cache` dan `route:cache` belum dipakai di project ini, jadi tidak ada
-yang perlu di-clear untuk keduanya.
+Cutover dilakukan per client/job group:
 
----
+1. review seluruh import error dan credential;
+2. lakukan Run now pada satu endpoint harmless;
+3. nonaktifkan baris legacy yang tepat;
+4. resume schedule pengganti melalui UI;
+5. pantau minimal dua siklus;
+6. rollback dengan Pause schedule baru dan aktifkan kembali baris legacy.
 
-## 5. Pemeliharaan rutin
-
-| Kapan | Apa |
-| --- | --- |
-| Harian | Lihat dashboard. Success rate < 99% atau ada Overdue schedule berarti perlu ditelusuri. |
-| Harian | Bersihkan menu **Alerts** — acknowledge yang sedang ditangani, resolve yang sudah beres. |
-| Mingguan | `php artisan cron:cutover-status` selama masa migrasi masih berjalan. |
-| Otomatis | `cron:check-missed` tiap 5 menit, `cron:purge-runs` tiap 03:15. Keduanya lewat `schedule:run`. |
-
-Penjadwal Laravel butuh satu baris di crontab server, terpisah dari file yang
-di-generate aplikasi:
-
-```
-* * * * * cd /opt/opsifin-cron && php artisan schedule:run >> /dev/null 2>&1
-```
-
-Pemisahan ini disengaja. Pemeriksaan missed run harus tetap hidup justru ketika
-crontab hasil render bermasalah — kalau keduanya dijadwalkan di tempat yang
-sama, satu kegagalan akan mematikan job sekaligus alarmnya.
-
----
-
-## 6. Rujukan perintah
-
-| Perintah | Fungsi |
-| --- | --- |
-| `cron:cutover-status [client]` | Kesiapan cutover per client, plus daftar blocker |
-| `cron:check-missed` | Cari schedule yang seharusnya jalan tapi tidak |
-| `cron:purge-runs --dry-run` | Lihat berapa baris yang akan dibersihkan |
-| `cron:run <id> --dry-run` | Tampilkan request tanpa memanggil endpoint |
-| `cron:run <id>` | Jalankan satu schedule sekarang |
-| `cron:render --validate` | Cek semua schedule aktif, tidak menulis apa pun |
-| `sudo cron:render --apply` | Deploy ke `cron.d` + backup otomatis |
-| `sudo cron:rollback` | Kembalikan ke backup terakhir |
-| `cron:verify-import` | Bandingkan hasil impor dengan script `.sh` asli |
+Jangan mengaktifkan runtime lama dan baru untuk job yang sama secara bersamaan.

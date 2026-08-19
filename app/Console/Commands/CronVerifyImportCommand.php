@@ -2,31 +2,20 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\LegacyPattern;
-use App\Models\ClientTaskOverride;
-use App\Models\Schedule;
+use App\Models\TaskTemplate;
 use App\Services\LegacyImport\CurlParser;
 use App\Services\LegacyImport\Dto\ParsedCurl;
-use App\Services\LegacyImport\ShellConfigParser;
 use Illuminate\Console\Command;
-use Illuminate\Support\Collection;
 
-/**
- * Verifikasi round-trip: untuk setiap schedule hasil impor, susun ulang request
- * dari database lalu bandingkan dengan hasil parse langsung script legacy-nya.
- *
- * Ini jaring pengaman terhadap risiko "importer salah parse salah satu dari 478
- * script" (§7 rencana) — dijalankan sebelum shadow run, bukan menggantikannya.
- */
 class CronVerifyImportCommand extends Command
 {
     protected $signature = 'cron:verify-import
         {--source= : Legacy cron repo folder (default: config opsifin_cron.source_path)}
         {--limit=0 : Limit how many differences are shown (0 = all)}';
 
-    protected $description = 'Compare the imported requests against the original legacy scripts';
+    protected $description = 'Compare imported task templates against the canonical jobs/*.sh catalog';
 
-    public function handle(CurlParser $parser, ShellConfigParser $configParser): int
+    public function handle(CurlParser $parser): int
     {
         $source = rtrim($this->option('source') ?: config('opsifin_cron.source_path'), '/');
 
@@ -36,127 +25,97 @@ class CronVerifyImportCommand extends Command
             return self::FAILURE;
         }
 
-        $envFile = $source.'/opsifin_env.sh';
-        $env = is_file($envFile) ? $configParser->parse(file_get_contents($envFile) ?: '') : [];
-
+        $variables = [
+            'API_URL' => 'https://__base__',
+            'AUTH_TOKEN' => '__auth__',
+            'API_SECRET_KEY' => '{{client.secret_key}}',
+            'API_USERNAME' => '{{client.username}}',
+            'API_PASSWORD' => '{{client.secret}}',
+            'CLIENT_NAME' => '',
+        ];
         $matched = 0;
         $skipped = 0;
         $differences = [];
+        $templates = TaskTemplate::query()->orderBy('key')->get();
 
-        $schedules = Schedule::with(['client', 'taskTemplate'])
-            ->where('legacy_pattern', LegacyPattern::DirectScript->value)
-            ->get();
-
-        $overrides = ClientTaskOverride::all()
-            ->keyBy(fn ($o) => $o->client_id.':'.$o->task_template_id);
-
-        $bar = $this->output->createProgressBar($schedules->count());
+        $bar = $this->output->createProgressBar($templates->count());
         $bar->start();
 
-        foreach ($schedules as $schedule) {
+        foreach ($templates as $template) {
             $bar->advance();
 
-            if (! preg_match('#/cron/([\w\-]+)/([\w\-.]+)\.sh#', (string) $schedule->legacy_command, $m)) {
+            if ($template->legacy_job_file === null) {
                 $skipped++;
 
                 continue;
             }
 
-            $file = $source.'/'.$m[1].'/'.$m[2].'.sh';
-
+            $file = $source.'/'.$template->legacy_job_file;
             if (! is_file($file)) {
                 $skipped++;
 
                 continue;
             }
 
-            $curl = $parser->parseFile(file_get_contents($file) ?: '', $env);
-
-            if ($curl === null || $curl->host === null) {
+            $curl = $parser->parseFile(file_get_contents($file) ?: '', $variables);
+            if ($curl === null || $curl->path === null) {
                 $skipped++;
 
                 continue;
             }
 
-            $diffs = $this->compare($schedule, $curl, $overrides);
-
+            $diffs = $this->compare($template, $curl);
             if ($diffs === []) {
                 $matched++;
 
                 continue;
             }
 
-            $differences[] = [$m[1].'/'.$m[2].'.sh', implode('; ', $diffs)];
+            $differences[] = [$template->legacy_job_file, implode('; ', $diffs)];
         }
 
         $bar->finish();
         $this->newLine(2);
-
         $this->table(['Result', 'Count'], [
-            ['Exact match with the legacy script', $matched],
+            ['Exact match with jobs/', $matched],
             ['Different', count($differences)],
-            ['Skipped (script missing / could not be parsed)', $skipped],
+            ['Skipped (job source missing / could not be parsed)', $skipped],
         ]);
 
         if ($differences !== []) {
             $limit = (int) $this->option('limit');
-            $shown = $limit > 0 ? array_slice($differences, 0, $limit) : $differences;
-
             $this->newLine();
             $this->warn('Differences:');
-            $this->table(['Script', 'Difference'], $shown);
+            $this->table(['Canonical job', 'Difference'], $limit > 0 ? array_slice($differences, 0, $limit) : $differences);
         }
 
         return $differences === [] ? self::SUCCESS : self::FAILURE;
     }
 
-    /**
-     * @param  Collection<string, ClientTaskOverride>  $overrides
-     * @return array<int, string>
-     */
-    private function compare(Schedule $schedule, ParsedCurl $curl, $overrides): array
+    /** @return array<int, string> */
+    private function compare(TaskTemplate $template, ParsedCurl $curl): array
     {
-        $template = $schedule->taskTemplate;
-        $client = $schedule->client;
-        $override = $overrides->get($schedule->client_id.':'.$schedule->task_template_id);
-
-        $baseUrl = rtrim($override?->base_url_override ?: $client->base_url, '/');
-        $path = $override?->path_override ?: $template->path_template;
-        $method = $override?->method_override ?: $template->http_method->value;
-        $body = $override?->body_override ?? $template->body_template;
-
-        $headers = array_merge($template->headers ?? [], $override?->headers_override ?? []);
-
+        $config = $template->config ?? [];
         $diffs = [];
-        $expectedUrl = $curl->baseUrl().$curl->path;
-        $actualUrl = $baseUrl.'/'.ltrim((string) $path, '/');
 
-        if ($actualUrl !== $expectedUrl) {
-            $diffs[] = "url {$actualUrl} != {$expectedUrl}";
+        if (($config['path'] ?? null) !== $curl->path) {
+            $diffs[] = 'path differs';
+        }
+        if (($config['method'] ?? 'POST') !== $curl->method) {
+            $diffs[] = 'method differs';
+        }
+        if (($config['body'] ?? null) !== $curl->body) {
+            $diffs[] = 'body differs';
         }
 
-        if ($method !== $curl->method) {
-            $diffs[] = "method {$method} != {$curl->method}";
-        }
-
-        if ($body !== $curl->body) {
-            $diffs[] = 'body '.var_export($body, true).' != '.var_export($curl->body, true);
-        }
-
-        if ($curl->authScheme === 'Basic') {
-            $expected = 'Basic '.base64_encode($curl->authUsername.':'.$curl->authPassword);
-
-            if ($client->authorizationHeader() !== $expected) {
-                $diffs[] = 'Authorization differs';
+        $headers = $curl->extraHeaders();
+        foreach ($headers as $name => $value) {
+            if (strcasecmp($name, 'SecretKey') === 0) {
+                $headers[$name] = '{{client.secret_key}}';
             }
         }
-
-        if ($curl->secretKey !== null) {
-            $resolved = strtr($headers['SecretKey'] ?? '', ['{{client.secret_key}}' => (string) $client->auth_secret_key]);
-
-            if ($resolved !== $curl->secretKey) {
-                $diffs[] = 'SecretKey differs';
-            }
+        if (($config['headers'] ?? []) !== $headers) {
+            $diffs[] = 'headers differ';
         }
 
         return $diffs;

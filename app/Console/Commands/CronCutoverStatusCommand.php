@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Enums\FindingSeverity;
 use App\Enums\RunStatus;
-use App\Enums\RunTrigger;
 use App\Models\Client;
 use App\Models\ImportFinding;
 use App\Models\ImportRun;
@@ -108,13 +107,12 @@ class CronCutoverStatusCommand extends Command
         $recent = Run::query()
             ->where('client_id', $client->id)
             ->where('started_at', '>=', now()->subDay())
-            ->whereNot('trigger', RunTrigger::DryRun->value)
             ->selectRaw('status, count(*) as total')
             ->groupBy('status')
             ->pluck('total', 'status');
 
-        $ok = (int) ($recent[RunStatus::Success->value] ?? 0);
-        $bad = (int) ($recent[RunStatus::Failed->value] ?? 0) + (int) ($recent[RunStatus::Timeout->value] ?? 0);
+        $ok = (int) ($recent[RunStatus::Succeeded->value] ?? 0);
+        $bad = (int) ($recent[RunStatus::Failed->value] ?? 0);
 
         return [
             'total' => $total,

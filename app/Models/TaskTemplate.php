@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Enums\HttpMethod;
+use App\Enums\ExecutorType;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,8 +16,8 @@ class TaskTemplate extends Model
     protected function casts(): array
     {
         return [
-            'http_method' => HttpMethod::class,
-            'headers' => 'array',
+            'executor' => ExecutorType::class,
+            'config' => 'array',
             'legacy_script_names' => 'array',
             'is_active' => 'boolean',
             'legacy_gateway_routed' => 'boolean',
@@ -30,8 +30,8 @@ class TaskTemplate extends Model
         return $this->hasMany(Schedule::class);
     }
 
-    public function overrides(): HasMany
+    public function runs(): HasMany
     {
-        return $this->hasMany(ClientTaskOverride::class);
+        return $this->hasMany(Run::class);
     }
 }

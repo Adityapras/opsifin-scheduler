@@ -2,26 +2,22 @@
 
 namespace App\Filament\Widgets;
 
-use App\Filament\Resources\Schedules\ScheduleResource;
-use App\Models\Schedule;
+use App\Enums\RunStatus;
+use App\Filament\Resources\Runs\RunResource;
+use App\Models\Run;
+use App\Services\Scheduling\QueuedRunCanceller;
 use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
-use Illuminate\Database\Eloquent\Builder;
+use InvalidArgumentException;
 
-/**
- * Schedule aktif yang jadwalnya sudah lewat tapi belum tereksekusi.
- *
- * Berbeda dari daftar run gagal: yang muncul di sini justru job yang tidak
- * meninggalkan jejak apa pun — biasanya karena crontab belum di-deploy atau
- * daemon cron mati.
- */
 class LateSchedulesTable extends TableWidget
 {
     protected static ?int $sort = 2;
 
-    protected ?string $pollingInterval = '60s';
+    protected ?string $pollingInterval = '30s';
 
     protected int|string|array $columnSpan = 'full';
 
@@ -32,59 +28,37 @@ class LateSchedulesTable extends TableWidget
 
     public function getTableHeading(): string
     {
-        return 'Overdue schedules';
+        return 'Oldest pending occurrences';
     }
 
     public function table(Table $table): Table
     {
         return $table
-            ->query($this->overdueQuery())
-            ->defaultSort('next_run_at')
-            ->paginationPageOptions([5, 10, 25])
-            ->emptyStateHeading('Nothing overdue')
-            ->emptyStateDescription('Every enabled schedule has run at or after its last due time.')
+            ->query(Run::query()->with(['client', 'taskTemplate'])->where('status', RunStatus::Queued->value))
+            ->defaultSort('queued_at')->paginationPageOptions([5, 10, 25])
+            ->emptyStateHeading('Queue is clear')
+            ->emptyStateDescription('No occurrence is waiting for a worker.')
             ->columns([
-                TextColumn::make('client.code')->label('Client')->weight('bold'),
-                TextColumn::make('taskTemplate.key')->label('Task'),
-
-                TextColumn::make('cron_expression')
-                    ->label('Schedule')
-                    ->fontFamily('mono'),
-
-                TextColumn::make('next_run_at')
-                    ->label('Was due')
-                    ->dateTime('d M H:i')
-                    ->timezone(config('opsifin_cron.default_timezone'))
-                    ->color('danger'),
-
-                TextColumn::make('last_run_at')
-                    ->label('Last run')
-                    ->since()
-                    ->placeholder('never'),
+                TextColumn::make('queued_at')->label('Waiting')->since()->color('warning')->sortable(),
+                TextColumn::make('client.code')->label('Client')->weight('bold')->placeholder('Deleted'),
+                TextColumn::make('taskTemplate.key')->label('Task')->placeholder('Deleted'),
+                TextColumn::make('scheduled_for')->label('Scheduled for')->dateTime('d M H:i:s')->timezone(config('opsifin_cron.default_timezone')),
+                TextColumn::make('trigger')->badge()->color('gray'),
             ])
             ->recordActions([
-                Action::make('open')
-                    ->label('Open')
-                    ->icon('heroicon-o-arrow-top-right-on-square')
-                    ->url(fn (Schedule $record) => ScheduleResource::getUrl('edit', ['record' => $record])),
+                Action::make('cancel')->icon('heroicon-o-x-circle')->color('danger')
+                    ->requiresConfirmation()
+                    ->authorize(fn (Run $record) => auth()->user()->can('cancel', $record))
+                    ->action(function (Run $record, QueuedRunCanceller $canceller): void {
+                        try {
+                            $canceller->cancel($record);
+                            Notification::make()->title('Run #'.$record->id.' cancelled')->success()->send();
+                        } catch (InvalidArgumentException) {
+                            Notification::make()->title('Run #'.$record->id.' is no longer queued')->warning()->send();
+                        }
+                    }),
+                Action::make('open')->icon('heroicon-o-arrow-top-right-on-square')
+                    ->url(fn (Run $record) => RunResource::getUrl('view', ['record' => $record])),
             ]);
-    }
-
-    /**
-     * next_run_at menyimpan jadwal berikutnya yang belum terjadi. Kalau nilainya
-     * sudah lewat, artinya runner tidak pernah menyentuh schedule ini sejak
-     * jadwal itu — karena setiap run menghitung ulang kolomnya.
-     *
-     * @return Builder<Schedule>
-     */
-    private function overdueQuery(): Builder
-    {
-        return Schedule::query()
-            ->with(['client', 'taskTemplate'])
-            ->where('is_enabled', true)
-            ->whereHas('client', fn ($q) => $q->where('is_active', true))
-            ->whereHas('taskTemplate', fn ($q) => $q->where('is_active', true))
-            ->whereNotNull('next_run_at')
-            ->where('next_run_at', '<', now()->subMinutes(5));
     }
 }

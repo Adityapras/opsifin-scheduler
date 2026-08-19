@@ -17,8 +17,17 @@ enum UserRole: string
         };
     }
 
+    public function color(): string
+    {
+        return match ($this) {
+            self::Admin => 'danger',
+            self::Operator => 'primary',
+            self::Viewer => 'gray',
+        };
+    }
+
     /**
-     * Boleh membuat/mengubah data master & deploy crontab.
+     * Boleh membuat/mengubah data master dan kebijakan scheduler.
      */
     public function canManage(): bool
     {

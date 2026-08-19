@@ -20,11 +20,11 @@ class RunResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedListBullet;
 
-    protected static ?string $navigationLabel = 'Runs';
+    protected static ?string $navigationLabel = 'Execution logs';
 
-    protected static ?string $modelLabel = 'run';
+    protected static ?string $modelLabel = 'execution log';
 
-    protected static ?string $pluralModelLabel = 'runs';
+    protected static ?string $pluralModelLabel = 'execution logs';
 
     protected static ?int $navigationSort = 20;
 
@@ -42,8 +42,8 @@ class RunResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        $problems = Run::whereIn('status', [RunStatus::Failed->value, RunStatus::Timeout->value])
-            ->where('started_at', '>=', now()->subDay())
+        $problems = Run::where('status', RunStatus::Failed->value)
+            ->where('scheduled_for', '>=', now()->subDay())
             ->count();
 
         return $problems > 0 ? (string) $problems : null;
@@ -56,7 +56,7 @@ class RunResource extends Resource
 
     public static function getNavigationBadgeTooltip(): ?string
     {
-        return 'Failed or timed out in the last 24 hours';
+        return 'Failed runs in the last 24 hours';
     }
 
     public static function getPages(): array

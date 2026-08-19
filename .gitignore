@@ -3,6 +3,7 @@
 .env
 .env.backup
 .env.production
+.user.ini
 .phpactor.json
 .phpunit.result.cache
 /.codex
@@ -17,6 +18,10 @@
 /public/build
 /public/fonts-manifest.dev.json
 /public/hot
+/public/.user.ini
+/public/404.html
+/public/502.html
+/public/index.html
 /public/storage
 /storage/*.key
 /storage/pail

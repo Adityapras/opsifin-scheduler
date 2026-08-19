@@ -19,6 +19,10 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/>
+        <env name="APP_CONFIG_CACHE" value="/tmp/opsifin-crontab-test-config.php"/>
+        <env name="APP_ROUTES_CACHE" value="/tmp/opsifin-crontab-test-routes.php"/>
+        <env name="APP_EVENTS_CACHE" value="/tmp/opsifin-crontab-test-events.php"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
@@ -32,5 +36,6 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="VIEW_COMPILED_PATH" value="/tmp/opsifin-crontab-test-views"/>
     </php>
 </phpunit>

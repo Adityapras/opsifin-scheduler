@@ -47,7 +47,7 @@ class ScheduleResource extends Resource
 
     public static function getNavigationBadgeTooltip(): ?string
     {
-        return 'Enabled schedules that will be rendered into the crontab';
+        return 'Enabled database-backed HTTP schedules';
     }
 
     public static function getPages(): array

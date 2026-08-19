@@ -1,0 +1,15 @@
+[program:opsifin-scheduler-worker]
+process_name=%(program_name)s_%(process_num)02d
+directory=/home/aditya_prasetyo/project/opsifin-crontab
+command=/www/server/php/84/bin/php artisan queue:work database --queue=default --sleep=1 --tries=1 --timeout=1900 --max-time=3600
+user=www
+numprocs=2
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stopwaitsecs=2000
+redirect_stderr=true
+stdout_logfile=/home/aditya_prasetyo/project/opsifin-crontab/storage/logs/supervisor-worker.log
+stdout_logfile_maxbytes=20MB
+stdout_logfile_backups=5

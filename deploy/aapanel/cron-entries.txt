@@ -1,0 +1,4 @@
+# aaPanel Cron -> Task type "Shell Script". Create one development task.
+
+# Every minute — Laravel Scheduler dispatches due jobs and daily maintenance.
+cd /home/aditya_prasetyo/project/opsifin-crontab && /www/server/php/84/bin/php artisan schedule:run

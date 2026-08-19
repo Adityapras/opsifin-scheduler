@@ -2,18 +2,18 @@
 
 namespace App\Providers\Filament;
 
-use App\Filament\Widgets\ClientHealthTable;
 use App\Filament\Widgets\LateSchedulesTable;
 use App\Filament\Widgets\RunHealthOverview;
-use App\Filament\Widgets\SlowestTasksTable;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\NavigationItem;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Width;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -30,13 +30,28 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->viteTheme('resources/css/filament/admin/theme.css')
+            ->brandName('Opsifin Scheduler')
+            ->sidebarCollapsibleOnDesktop()
+            ->maxContentWidth(Width::Full)
             ->login()
             ->colors([
-                'primary' => Color::Amber,
+                'danger' => Color::Rose,
+                'gray' => Color::Slate,
+                'info' => Color::Sky,
+                'primary' => Color::Indigo,
+                'success' => Color::Emerald,
+                'warning' => Color::Amber,
             ])
-            // Alert mendarat di lonceng notifikasi selama belum ada channel keluar.
             ->databaseNotifications()
             ->databaseNotificationsPolling('60s')
+            ->navigationItems([
+                NavigationItem::make('Telescope')
+                    ->group('System')
+                    ->icon('heroicon-o-chart-bar')
+                    ->sort(60)
+                    ->url('/telescope', shouldOpenInNewTab: true)
+                    ->visible(fn (): bool => auth()->user()?->isAdmin() ?? false),
+            ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
@@ -46,8 +61,6 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 RunHealthOverview::class,
                 LateSchedulesTable::class,
-                ClientHealthTable::class,
-                SlowestTasksTable::class,
             ])
             ->middleware([
                 EncryptCookies::class,

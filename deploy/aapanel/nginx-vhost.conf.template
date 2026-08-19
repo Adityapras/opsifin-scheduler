@@ -1,0 +1,32 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name opsifin-cron.local;
+
+    root /home/aditya_prasetyo/project/opsifin-crontab/public;
+    index index.php index.html;
+
+    access_log /www/wwwlogs/opsifin-cron.local.log;
+    error_log /www/wwwlogs/opsifin-cron.local.error.log;
+
+    # Livewire serves this JavaScript through a Laravel route whose path ends
+    # in .js. The ^~ prefix prevents aaPanel's generic static-asset regex from
+    # intercepting it and returning public/404.html.
+    location ^~ /livewire- {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    include enable-php-84.conf;
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    location ~* \.(?:env|log|sql|sqlite|lock)$ {
+        deny all;
+    }
+}

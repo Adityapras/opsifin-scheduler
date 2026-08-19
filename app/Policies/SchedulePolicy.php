@@ -22,7 +22,7 @@ class SchedulePolicy
         return $user->canManage();
     }
 
-    /** Mengubah ekspresi cron, lock, atau target adalah kewenangan admin. */
+    /** Mengubah ekspresi cron atau target adalah kewenangan admin. */
     public function update(User $user, Schedule $schedule): bool
     {
         return $user->canManage();
@@ -39,7 +39,7 @@ class SchedulePolicy
         return $user->canOperate();
     }
 
-    /** Jalankan sekarang — tetap menghormati lock. */
+    /** Jalankan sekarang — tetap menghormati satu execution slot di database. */
     public function run(User $user, Schedule $schedule): bool
     {
         return $user->canOperate();
@@ -49,11 +49,5 @@ class SchedulePolicy
     public function dryRun(User $user, Schedule $schedule): bool
     {
         return $user->is_active;
-    }
-
-    /** Render & deploy crontab. */
-    public function deploy(User $user): bool
-    {
-        return $user->canManage();
     }
 }

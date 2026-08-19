@@ -15,28 +15,30 @@ return new class extends Migration
             $table->foreignId('client_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('task_template_id')->nullable()->constrained()->nullOnDelete();
 
-            $table->string('trigger', 16)->default('cron');
-            $table->string('status', 24)->default('running');
-            $table->unsignedTinyInteger('attempt')->default(1);
+            $table->foreignId('source_run_id')->nullable()->constrained('runs')->nullOnDelete();
+            $table->char('materialization_key', 64)->nullable()->unique();
+            $table->timestamp('scheduled_for');
+            $table->string('trigger', 16)->default('schedule');
+            $table->string('status', 32)->default('queued');
+            $table->timestamp('queued_at')->nullable();
 
             $table->timestamp('started_at')->nullable();
             $table->timestamp('finished_at')->nullable();
+            $table->timestamp('execution_deadline_at')->nullable();
             $table->unsignedInteger('duration_ms')->nullable();
-
-            $table->string('request_method', 8)->nullable();
-            $table->text('request_url')->nullable();
             $table->unsignedSmallInteger('http_status')->nullable();
             $table->text('response_excerpt')->nullable();
             $table->text('error_message')->nullable();
-            $table->string('host', 128)->nullable();
+            $table->string('worker', 191)->nullable();
 
             $table->timestamps();
 
-            $table->index(['schedule_id', 'started_at']);
-            $table->index(['status', 'started_at']);
-            $table->index(['client_id', 'started_at']);
-            $table->index('started_at');
+            $table->index(['schedule_id', 'scheduled_for']);
+            $table->index(['status', 'scheduled_for']);
+            $table->index(['client_id', 'scheduled_for']);
+            $table->index(['task_template_id', 'scheduled_for']);
         });
+
     }
 
     public function down(): void

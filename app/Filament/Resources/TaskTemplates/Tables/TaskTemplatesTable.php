@@ -2,13 +2,21 @@
 
 namespace App\Filament\Resources\TaskTemplates\Tables;
 
+use App\Models\Client;
 use App\Models\TaskTemplate;
+use App\Services\Scheduling\ScheduleManager;
+use Cron\CronExpression;
+use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
@@ -19,69 +27,83 @@ class TaskTemplatesTable
         return $table
             ->defaultSort('key')
             ->columns([
-                TextColumn::make('key')
-                    ->label('Key')
-                    ->searchable()
-                    ->sortable()
-                    ->weight('bold'),
-
-                TextColumn::make('http_method')
-                    ->label('Method')
-                    ->badge()
-                    ->color(fn ($state) => $state->value === 'GET' ? 'info' : 'warning'),
-
-                TextColumn::make('path_template')
-                    ->label('Path')
-                    ->searchable()
-                    ->copyable()
-                    ->fontFamily('mono')
-                    ->limit(45),
-
-                TextColumn::make('default_timeout_sec')
-                    ->label('Timeout')
-                    ->alignEnd()
-                    ->formatStateUsing(fn ($state) => $state.'s'),
-
-                TextColumn::make('schedules_count')
-                    ->label('Schedules')
-                    ->counts('schedules')
-                    ->alignEnd()
-                    ->sortable(),
-
-                TextColumn::make('overrides_count')
-                    ->label('Overrides')
-                    ->counts('overrides')
-                    ->alignEnd()
-                    ->badge()
-                    ->color(fn ($state) => $state > 0 ? 'warning' : 'gray')
-                    ->tooltip('Clients that deviate from this template\'s defaults')
-                    ->sortable(),
-
-                IconColumn::make('legacy_gateway_routed')
-                    ->label('Gateway')
-                    ->boolean()
-                    ->tooltip(fn (TaskTemplate $record) => $record->legacy_job_file),
-
-                IconColumn::make('is_active')
-                    ->label('Active')
-                    ->boolean(),
+                TextColumn::make('key')->searchable()->sortable()->weight('bold')
+                    ->description(fn (TaskTemplate $record) => $record->name),
+                TextColumn::make('config.method')->label('Method')->badge()->color('info'),
+                TextColumn::make('config.path')->label('Endpoint path')->fontFamily('mono')->searchable()->copyable()->limit(52),
+                TextColumn::make('timeout_sec')->label('Timeout')->suffix(' sec')->alignEnd()->sortable(),
+                TextColumn::make('schedules_count')->label('Assignments')->counts('schedules')->alignEnd()->sortable(),
+                IconColumn::make('needs_review')->label('Review')->boolean()->trueColor('warning')->falseIcon('heroicon-o-minus'),
+                IconColumn::make('is_active')->label('Active')->boolean(),
             ])
             ->filters([
-                TernaryFilter::make('is_active')->label('Active'),
-
-                TernaryFilter::make('legacy_gateway_routed')->label('Came from gateway'),
-
-                SelectFilter::make('http_method')
-                    ->label('Method')
-                    ->options(['GET' => 'GET', 'POST' => 'POST', 'PUT' => 'PUT', 'PATCH' => 'PATCH', 'DELETE' => 'DELETE']),
+                TernaryFilter::make('is_active'),
+                TernaryFilter::make('needs_review'),
             ])
             ->recordActions([
-                EditAction::make(),
+                ActionGroup::make([
+                    Action::make('assignAllActive')
+                        ->label('Assign all active clients')->icon('heroicon-o-user-group')->color('success')
+                        ->authorize(fn () => auth()->user()->canManage())
+                        ->schema(self::timingSchema())
+                        ->requiresConfirmation()
+                        ->action(function (TaskTemplate $record, array $data, ScheduleManager $manager): void {
+                            $ids = Client::query()->where('is_active', true)->pluck('id')->all();
+                            $count = $manager->assign($record, $ids, $data['cron_expression'], $data['timezone'], (bool) $data['is_enabled']);
+                            Notification::make()->title($count.' new assignment(s) created')->success()->send();
+                        }),
+                    Action::make('assignSelected')
+                        ->label('Assign selected clients')->icon('heroicon-o-user-plus')
+                        ->authorize(fn () => auth()->user()->canManage())
+                        ->schema([
+                            Select::make('client_ids')->label('Clients')
+                                ->options(Client::query()->orderBy('code')->pluck('name', 'id'))
+                                ->getOptionLabelUsing(fn ($value) => (($client = Client::find($value)) ? $client->code.' — '.$client->name : $value))
+                                ->multiple()->searchable()->preload()->required(),
+                            ...self::timingSchema(),
+                        ])
+                        ->action(function (TaskTemplate $record, array $data, ScheduleManager $manager): void {
+                            $count = $manager->assign($record, $data['client_ids'], $data['cron_expression'], $data['timezone'], (bool) $data['is_enabled']);
+                            Notification::make()->title($count.' new assignment(s) created')->success()->send();
+                        }),
+                    Action::make('removeSelected')
+                        ->label('Remove from selected clients')->icon('heroicon-o-user-minus')->color('danger')
+                        ->authorize(fn () => auth()->user()->canManage())
+                        ->schema([
+                            Select::make('client_ids')->label('Clients')
+                                ->options(Client::query()->orderBy('code')->pluck('name', 'id'))
+                                ->multiple()->searchable()->preload()->required(),
+                        ])
+                        ->requiresConfirmation()
+                        ->modalDescription('Assignments with an active run are kept. Run history remains available after other assignments are removed.')
+                        ->action(function (TaskTemplate $record, array $data, ScheduleManager $manager): void {
+                            $count = $manager->removeAssignments($record, $data['client_ids']);
+                            Notification::make()->title($count.' assignment(s) removed')->success()->send();
+                        }),
+                    EditAction::make(),
+                ])->label('Actions')->tooltip('Actions')->color('gray'),
             ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                ]),
-            ]);
+            ->toolbarActions([BulkActionGroup::make([DeleteBulkAction::make()])]);
+    }
+
+    /** @return array<int, mixed> */
+    private static function timingSchema(): array
+    {
+        return [
+            TextInput::make('cron_expression')
+                ->label('Cron expression')->default('*/5 * * * *')->required()
+                ->rule(fn () => function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! CronExpression::isValidExpression((string) $value)) {
+                        $fail('The cron expression is not valid.');
+                    }
+                }),
+            Select::make('timezone')
+                ->options(array_combine(timezone_identifiers_list(), timezone_identifiers_list()))
+                ->searchable()->required()->default(config('opsifin_cron.default_timezone')),
+            Toggle::make('is_enabled')
+                ->label('Enable new assignments immediately')
+                ->helperText('Keep this off during import and cutover preparation.')
+                ->default(false),
+        ];
     }
 }

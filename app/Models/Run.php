@@ -16,8 +16,12 @@ class Run extends Model
         return [
             'status' => RunStatus::class,
             'trigger' => RunTrigger::class,
+            'scheduled_for' => 'datetime',
+            'queued_at' => 'datetime',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'execution_deadline_at' => 'datetime',
+            'queue_job_id' => 'integer',
         ];
     }
 
@@ -34,5 +38,15 @@ class Run extends Model
     public function taskTemplate(): BelongsTo
     {
         return $this->belongsTo(TaskTemplate::class);
+    }
+
+    public function sourceRun(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'source_run_id');
+    }
+
+    public function isTerminal(): bool
+    {
+        return $this->status->isTerminal();
     }
 }

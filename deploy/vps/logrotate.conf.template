@@ -1,0 +1,10 @@
+/var/log/opsifin-scheduler/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0664 opsifin www-data
+}

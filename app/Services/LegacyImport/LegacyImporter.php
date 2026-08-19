@@ -5,7 +5,6 @@ namespace App\Services\LegacyImport;
 use App\Enums\FindingSeverity;
 use App\Enums\LegacyPattern;
 use App\Models\Client;
-use App\Models\ClientTaskOverride;
 use App\Models\ImportFinding;
 use App\Models\ImportRun;
 use App\Models\Schedule;
@@ -17,8 +16,8 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * Mengubah repo cron legacy (crontab + configs/*.conf + 478 file .sh) menjadi
- * baris-baris di clients / task_templates / client_task_overrides / schedules.
+ * Mengubah repo cron legacy (crontab + configs/*.conf + jobs/ + script client) menjadi
+ * baris-baris di clients / task_templates / schedules.
  *
  * Prinsip:
  *  - Tidak pernah menebak diam-diam. Setiap ketidakcocokan menjadi ImportFinding
@@ -31,7 +30,21 @@ class LegacyImporter
     /** Folder di dalam source path yang bukan folder client. */
     private const NON_CLIENT_DIRS = ['configs', 'jobs', 'logs', 'etc', '.vscode', '.git'];
 
+    /** Nama script lama yang berbeda dari nama file canonical di jobs/. */
+    private const LEGACY_SCRIPT_ALIASES = [
+        'auto_mail_c_r_limit' => 'auto_mail_credit_limit',
+        'auto_mail_cr_limit' => 'auto_mail_credit_limit',
+        'generate_billing_file' => 'billing_file',
+        'post_invoice' => 'post_invoice_to_opsigo',
+        'post_log_remittance' => 'request_bca_api',
+        'recuring' => 'recurring',
+        'repost_remittance' => 'repost_bca_api',
+        'update_status_auto_print_billing' => 'update_status_print_billing',
+    ];
+
     private string $sourcePath;
+
+    private string $crontabFilename = 'opsifin_crontab';
 
     /** @var array<string, string> */
     private array $envVars = [];
@@ -54,8 +67,8 @@ class LegacyImporter
     /** @var array<string, int|array<string, int>> */
     private array $stats = [];
 
-    /** @var array<string, string> scriptBase (lowercase) => template key */
-    private array $scriptToTemplate = [];
+    /** @var array<string, array<string, string>> client folder => scriptBase (lowercase) => canonical template key */
+    private array $clientScriptToTemplate = [];
 
     /** @var array<string, string> gateway task type => template key */
     private array $gatewayToTemplate = [];
@@ -98,12 +111,11 @@ class LegacyImporter
 
         $this->buildTemplates();
         $this->buildClients();
-        $this->buildOverrides();
         $entries = $this->buildSchedules();
 
         $this->stats['crontab_entries'] = count($entries);
         $this->stats['clients'] = count($this->clientsByFolder) + count(array_diff_key($this->clientsByConf, $this->clientsByFolder));
-        $this->stats['task_templates'] = count($this->templates);
+        $this->stats['task_templates'] = TaskTemplate::count();
 
         $importRun->finished_at = now();
         $importRun->stats = $this->stats;
@@ -158,7 +170,7 @@ class LegacyImporter
             'AUTH_TOKEN' => '__auth__',
             'API_SECRET_KEY' => '{{client.secret_key}}',
             'API_USERNAME' => '{{client.username}}',
-            'API_PASSWORD' => '{{client.password}}',
+            'API_PASSWORD' => '{{client.secret}}',
             'CLIENT_NAME' => '',
         ];
 
@@ -190,8 +202,12 @@ class LegacyImporter
         }
 
         // BUG-2 — job ada tapi tidak pernah dirouting.
-        foreach (array_keys($this->jobCurls) as $relative) {
-            if (! in_array($relative, $this->gatewayRoutes, true)) {
+        if (is_file($gatewayFile)) {
+            foreach (array_keys($this->jobCurls) as $relative) {
+                if (in_array($relative, $this->gatewayRoutes, true)) {
+                    continue;
+                }
+
                 $this->finding(
                     FindingSeverity::Warning,
                     'job_not_routed',
@@ -278,208 +294,141 @@ class LegacyImporter
 
     private function buildTemplates(): void
     {
-        $groups = $this->groupScriptsByName();
-        $groups = $this->mergeGroupsWithSamePath($groups);
-
-        $jobPathToKey = [];
-
+        // jobs/*.sh adalah katalog canonical. Script di folder client hanya
+        // dipakai untuk menemukan assignment lama, tidak boleh melahirkan
+        // template atau mengubah konfigurasi request canonical.
         foreach ($this->jobCurls as $relative => $curl) {
-            $gatewayKey = array_search($relative, $this->gatewayRoutes, true)
-                ?: pathinfo($relative, PATHINFO_FILENAME);
-            $jobPathToKey[$curl->path] = ['key' => $gatewayKey, 'file' => $relative, 'curl' => $curl];
-        }
-
-        $usedJobPaths = [];
-
-        foreach ($groups as $group) {
-            $canonicalPath = $group['path'];
-            $job = $jobPathToKey[$canonicalPath] ?? null;
-
-            if ($job !== null) {
-                $usedJobPaths[$canonicalPath] = true;
-                $key = $job['key'];
-            } else {
-                $key = Str::snake($group['names'][0]);
-            }
-
+            $key = Str::snake(pathinfo($relative, PATHINFO_FILENAME));
             $template = $this->persistTemplate(
                 key: $key,
-                path: $canonicalPath,
-                method: $group['method'],
-                body: $group['body'],
-                headers: $group['headers'],
-                jobFile: $job['file'] ?? null,
-                routed: $job !== null && in_array($job['file'], $this->gatewayRoutes, true),
-                scriptNames: $group['names'],
+                path: (string) $curl->path,
+                method: $curl->method,
+                body: $curl->body,
+                headers: $curl->extraHeaders(),
+                jobFile: $relative,
+                routed: in_array($relative, $this->gatewayRoutes, true),
+                scriptNames: [],
             );
 
-            foreach ($group['members'] as $scriptBase) {
-                $this->scriptToTemplate[strtolower($scriptBase)] = $template->key;
-            }
+            // Repo legacy yang sekarang sudah tidak memiliki gateway.sh.
+            // Nama file jobs/ tetap cukup untuk memetakan entry gateway lama.
+            $this->gatewayToTemplate[$key] = $template->key;
 
-            if ($job !== null) {
-                $gatewayTask = array_search($job['file'], $this->gatewayRoutes, true);
-
-                if ($gatewayTask !== false) {
+            foreach ($this->gatewayRoutes as $gatewayTask => $jobFile) {
+                if ($jobFile === $relative) {
                     $this->gatewayToTemplate[$gatewayTask] = $template->key;
                 }
             }
         }
 
-        // Job gateway yang tidak punya padanan script client sama sekali.
-        foreach ($jobPathToKey as $path => $job) {
-            if (isset($usedJobPaths[$path])) {
-                continue;
-            }
-
-            $template = $this->persistTemplate(
-                key: $job['key'],
-                path: $path,
-                method: $job['curl']->method,
-                body: $job['curl']->body,
-                headers: $job['curl']->extraHeaders(),
-                jobFile: $job['file'],
-                routed: in_array($job['file'], $this->gatewayRoutes, true),
-                scriptNames: [],
-            );
-
-            $gatewayTask = array_search($job['file'], $this->gatewayRoutes, true);
-
-            if ($gatewayTask !== false) {
-                $this->gatewayToTemplate[$gatewayTask] = $template->key;
-            }
+        if ($this->templates === []) {
+            throw new RuntimeException("No canonical job template found in {$this->sourcePath}/jobs");
         }
 
-        // Task yang dirouting gateway tapi file job-nya hilang (BUG-1): tetap dipetakan
-        // ke template dengan nama file terdekat supaya schedule-nya tidak hilang.
-        foreach ($this->gatewayRoutes as $task => $relative) {
-            if (isset($this->gatewayToTemplate[$task])) {
-                continue;
-            }
-
-            $guess = $this->guessTemplateForMissingJob($task);
-
-            if ($guess !== null) {
-                $this->gatewayToTemplate[$task] = $guess;
-                $this->finding(
-                    FindingSeverity::Warning,
-                    'gateway_route_remapped',
-                    "Gateway task '{$task}' was mapped to template '{$guess}' by name similarity, ".
-                    "because {$relative} does not exist. Verify manually before enabling.",
-                    'gateway.sh',
-                    context: ['task' => $task, 'template' => $guess],
-                );
-            }
-        }
-    }
-
-    /**
-     * @return array<string, array{names: array<int,string>, members: array<int,string>, path: string, method: string, body: ?string, headers: array<string,string>, variants: array<string,int>}>
-     */
-    private function groupScriptsByName(): array
-    {
-        $raw = [];
+        /** @var array<string, array<int, string>> $scriptNames */
+        $scriptNames = [];
 
         foreach ($this->scriptCurls as $folder => $scripts) {
             foreach ($scripts as $base => $curl) {
-                $groupKey = strtolower($base);
-                $raw[$groupKey]['name'] = $base;
-                $raw[$groupKey]['paths'][$curl->path] = ($raw[$groupKey]['paths'][$curl->path] ?? 0) + 1;
-                $raw[$groupKey]['methods'][$curl->method] = ($raw[$groupKey]['methods'][$curl->method] ?? 0) + 1;
-                $bodyKey = $curl->body ?? "\0null";
-                $raw[$groupKey]['bodies'][$bodyKey] = ($raw[$groupKey]['bodies'][$bodyKey] ?? 0) + 1;
-                $headerKey = json_encode($curl->extraHeaders());
-                $raw[$groupKey]['headers'][$headerKey] = ($raw[$groupKey]['headers'][$headerKey] ?? 0) + 1;
+                $templateKey = $this->canonicalTemplateKeyForScript($base, $curl);
+
+                if ($templateKey === null) {
+                    $this->finding(
+                        FindingSeverity::Info,
+                        'script_not_in_jobs_catalog',
+                        "Script {$folder}/{$base}.sh has no canonical job in jobs/ and is not imported as a task template.",
+                        $folder.'/'.$base.'.sh',
+                    );
+
+                    continue;
+                }
+
+                $lookup = strtolower($base);
+                $this->clientScriptToTemplate[$folder][$lookup] = $templateKey;
+                $scriptNames[$templateKey][] = $base;
+
+                $this->reportCanonicalDifference($folder, $base, $curl, $this->templates[$templateKey]);
             }
         }
 
-        $groups = [];
-
-        foreach ($raw as $groupKey => $data) {
-            arsort($data['paths']);
-            arsort($data['methods']);
-            arsort($data['bodies']);
-            arsort($data['headers']);
-
-            $body = array_key_first($data['bodies']);
-
-            $groups[$groupKey] = [
-                'names' => [$data['name']],
-                'members' => [$groupKey],
-                'path' => (string) array_key_first($data['paths']),
-                'method' => (string) array_key_first($data['methods']),
-                'body' => $body === "\0null" ? null : $body,
-                'headers' => json_decode((string) array_key_first($data['headers']), true) ?: [],
-                'variants' => $data['paths'],
-            ];
+        foreach ($scriptNames as $templateKey => $names) {
+            $this->templates[$templateKey]->forceFill([
+                'legacy_script_names' => array_values(array_unique($names)),
+            ])->save();
         }
 
-        return $groups;
+        $this->stats['canonical_job_templates'] = count($this->templates);
     }
 
-    /**
-     * `billingFile.sh` dan `generateBillingFile.sh` menembak endpoint yang sama —
-     * gabungkan supaya tidak lahir dua template untuk satu task.
-     *
-     * @param  array<string, array<string, mixed>>  $groups
-     * @return array<string, array<string, mixed>>
-     */
-    private function mergeGroupsWithSamePath(array $groups): array
+    private function canonicalTemplateKeyForScript(string $scriptBase, ParsedCurl $curl): ?string
     {
-        $byPath = [];
-        $merged = [];
+        $normalized = Str::snake($scriptBase);
 
-        // Grup dengan anggota terbanyak menjadi tuan rumah.
-        uasort($groups, fn ($a, $b) => array_sum($b['variants']) <=> array_sum($a['variants']));
-
-        foreach ($groups as $groupKey => $group) {
-            $path = $group['path'];
-
-            if (isset($byPath[$path])) {
-                $host = $byPath[$path];
-                $merged[$host]['names'] = array_merge($merged[$host]['names'], $group['names']);
-                $merged[$host]['members'] = array_merge($merged[$host]['members'], $group['members']);
-
-                $this->finding(
-                    FindingSeverity::Info,
-                    'template_merged',
-                    sprintf(
-                        "Script '%s.sh' was merged into the same template as '%s.sh' because the endpoints are identical (%s).",
-                        $group['names'][0],
-                        $merged[$host]['names'][0],
-                        $path,
-                    ),
-                    context: ['path' => $path, 'merged' => $group['names']],
-                );
-
-                continue;
-            }
-
-            $byPath[$path] = $groupKey;
-            $merged[$groupKey] = $group;
+        if (isset($this->templates[$normalized])) {
+            return $normalized;
         }
 
-        return $merged;
-    }
+        $alias = self::LEGACY_SCRIPT_ALIASES[$normalized] ?? null;
 
-    private function guessTemplateForMissingJob(string $task): ?string
-    {
-        // update_status_auto_print_billing -> update_status_print_billing
-        foreach ($this->templates as $key => $template) {
-            if (str_replace('_', '', $key) === str_replace(['_', 'auto'], '', $task)) {
-                return $key;
-            }
+        if ($alias !== null && isset($this->templates[$alias])) {
+            return $alias;
         }
 
-        foreach ($this->templates as $key => $template) {
-            similar_text($key, $task, $percent);
-
-            if ($percent >= 85) {
-                return $key;
+        foreach ($this->jobCurls as $relative => $jobCurl) {
+            if ($curl->path === $jobCurl->path) {
+                return Str::snake(pathinfo($relative, PATHINFO_FILENAME));
             }
         }
 
         return null;
+    }
+
+    private function canonicalTemplateKeyForName(string $task): ?string
+    {
+        $normalized = Str::snake($task);
+
+        if (isset($this->templates[$normalized])) {
+            return $normalized;
+        }
+
+        $alias = self::LEGACY_SCRIPT_ALIASES[$normalized] ?? null;
+
+        return $alias !== null && isset($this->templates[$alias]) ? $alias : null;
+    }
+
+    private function reportCanonicalDifference(
+        string $folder,
+        string $base,
+        ParsedCurl $curl,
+        TaskTemplate $template,
+    ): void {
+        $config = $template->config ?? [];
+        $differences = [];
+
+        foreach (['method' => $curl->method, 'path' => $curl->path, 'body' => $curl->body] as $field => $actual) {
+            if ($actual !== ($config[$field] ?? null)) {
+                $differences[$field] = ['legacy' => $actual, 'canonical' => $config[$field] ?? null];
+            }
+        }
+
+        $headers = $this->normalizeTemplateHeaders($curl->extraHeaders());
+
+        if ($headers !== ($config['headers'] ?? [])) {
+            $differences['headers'] = ['legacy' => $headers, 'canonical' => $config['headers'] ?? []];
+        }
+
+        if ($differences === []) {
+            return;
+        }
+
+        $this->finding(
+            FindingSeverity::Info,
+            'client_script_differs_from_canonical_job',
+            "Script {$folder}/{$base}.sh differs from jobs/{$template->key}.sh. The imported schedule uses the canonical jobs/ definition.",
+            $folder.'/'.$base.'.sh',
+            context: ['template' => $template->key, 'differences' => $differences],
+        );
+
     }
 
     /**
@@ -502,13 +451,15 @@ class LegacyImporter
             ['key' => $key],
             [
                 'name' => Str::headline($key),
-                'http_method' => $method,
-                'path_template' => $path,
-                'body_template' => $body,
-                'headers' => $this->normalizeTemplateHeaders($headers),
-                'default_timeout_sec' => $defaults['timeout_sec'],
-                'default_connect_timeout_sec' => $defaults['connect_timeout_sec'],
-                'default_retries' => $defaults['retries'],
+                'executor' => 'http',
+                'config' => [
+                    'method' => $method,
+                    'path' => $path,
+                    'body' => $body,
+                    'headers' => $this->normalizeTemplateHeaders($headers),
+                ],
+                'timeout_sec' => $defaults['timeout_sec'],
+                'connect_timeout_sec' => $defaults['connect_timeout_sec'],
                 'is_active' => true,
                 'legacy_gateway_routed' => $routed,
                 'legacy_job_file' => $jobFile,
@@ -818,190 +769,7 @@ class LegacyImporter
     }
 
     // ------------------------------------------------------------------
-    // Tahap 4 — override per client
-    // ------------------------------------------------------------------
-
-    private function buildOverrides(): void
-    {
-        $created = 0;
-        /** @var array<string, array{script: string, values: array<string, mixed>}> */
-        $seen = [];
-
-        foreach ($this->scriptCurls as $folder => $scripts) {
-            $client = $this->clientsByFolder[$folder] ?? null;
-
-            if ($client === null) {
-                continue;
-            }
-
-            foreach ($scripts as $base => $curl) {
-                $templateKey = $this->scriptToTemplate[strtolower($base)] ?? null;
-
-                if ($templateKey === null) {
-                    $this->finding(
-                        FindingSeverity::Error,
-                        'script_without_template',
-                        "Script {$folder}/{$base}.sh is not mapped to any template.",
-                        $folder.'/'.$base.'.sh',
-                    );
-
-                    continue;
-                }
-
-                $template = $this->templates[$templateKey];
-                $override = [];
-
-                if ($curl->path !== $template->path_template) {
-                    $override['path_override'] = $curl->path;
-                }
-
-                if ($curl->method !== $template->http_method->value) {
-                    $override['method_override'] = $curl->method;
-                }
-
-                if ($curl->body !== $template->body_template) {
-                    $override['body_override'] = $curl->body;
-                }
-
-                $extraHeaders = $this->normalizeTemplateHeaders($curl->extraHeaders());
-
-                if ($extraHeaders !== ($template->headers ?? [])) {
-                    $override['headers_override'] = $extraHeaders;
-                }
-
-                $baseUrl = (string) $curl->baseUrl();
-
-                if (rtrim($baseUrl, '/') !== rtrim($client->base_url, '/')) {
-                    $override['base_url_override'] = $baseUrl;
-                    $this->reportHostMismatch($folder, $base, $client, $baseUrl);
-                }
-
-                $script = $folder.'/'.$base.'.sh';
-                $pairKey = $client->id.':'.$template->id;
-
-                // Satu client bisa punya dua script berbeda yang menembak endpoint sama
-                // (mis. billingFile.sh dan generateBillingFile.sh). Model data hanya
-                // menyimpan satu override per pasangan, jadi bentrokan harus dilaporkan.
-                if (isset($seen[$pairKey])) {
-                    $previous = $seen[$pairKey];
-
-                    if ($previous['values'] !== $override) {
-                        $winner = $this->pickOverrideWinner($folder, $previous['script'], $script);
-
-                        $this->finding(
-                            FindingSeverity::Error,
-                            'override_collision',
-                            sprintf(
-                                "Client '%s' has two scripts for task '%s' with different configurations: %s and %s. ".
-                                'The one used: %s (referenced by the crontab / found first). Confirm which is correct and delete the other.',
-                                $client->code,
-                                $template->key,
-                                $previous['script'],
-                                $script,
-                                $winner,
-                            ),
-                            $script,
-                            context: [
-                                'task' => $template->key,
-                                'candidates' => [$previous['script'], $script],
-                                'winner' => $winner,
-                            ],
-                        );
-
-                        if ($winner !== $script) {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-                }
-
-                $seen[$pairKey] = ['script' => $script, 'values' => $override];
-
-                if ($override === []) {
-                    // Pemenang bentrokan bisa saja justru tidak butuh override sama sekali;
-                    // baris sisa dari script yang kalah harus dibuang.
-                    $created -= ClientTaskOverride::where('client_id', $client->id)
-                        ->where('task_template_id', $template->id)
-                        ->delete();
-
-                    continue;
-                }
-
-                ClientTaskOverride::updateOrCreate(
-                    ['client_id' => $client->id, 'task_template_id' => $template->id],
-                    $override + ['legacy_script_file' => $script],
-                );
-
-                $created++;
-            }
-        }
-
-        $this->stats['overrides'] = $created;
-    }
-
-    /**
-     * Bila dua script bentrok, menangkan yang benar-benar dipanggil crontab.
-     */
-    private function pickOverrideWinner(string $folder, string $previousScript, string $currentScript): string
-    {
-        $previousReferenced = $this->isReferencedInCrontab($folder, basename($previousScript, '.sh'));
-        $currentReferenced = $this->isReferencedInCrontab($folder, basename($currentScript, '.sh'));
-
-        if ($currentReferenced && ! $previousReferenced) {
-            return $currentScript;
-        }
-
-        return $previousScript;
-    }
-
-    private function isReferencedInCrontab(string $folder, string $scriptBase): bool
-    {
-        foreach ($this->cronEntries() as $entry) {
-            if ($entry->clientKey === $folder && $entry->taskKey === $scriptBase) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function reportHostMismatch(string $folder, string $base, Client $client, string $baseUrl): void
-    {
-        $owner = null;
-
-        foreach ($this->clientsByFolder as $otherFolder => $other) {
-            if ($otherFolder !== $folder && rtrim($other->base_url, '/') === rtrim($baseUrl, '/')) {
-                $owner = $otherFolder;
-                break;
-            }
-        }
-
-        if ($owner !== null) {
-            $this->finding(
-                FindingSeverity::Error,
-                'cross_client_host',
-                "Script {$folder}/{$base}.sh targets {$baseUrl}, which is the host of client '{$owner}', ".
-                "not the host of client '{$client->code}' ({$client->base_url}). Most likely a bad copy — confirm before migrating.",
-                $folder.'/'.$base.'.sh',
-                context: ['expected' => $client->base_url, 'actual' => $baseUrl, 'owner' => $owner],
-            );
-
-            return;
-        }
-
-        $this->finding(
-            FindingSeverity::Warning,
-            'host_mismatch',
-            "Script {$folder}/{$base}.sh uses {$baseUrl}, which differs from the base URL of client '{$client->code}' ({$client->base_url}). ".
-            'Stored as base_url_override.',
-            $folder.'/'.$base.'.sh',
-            context: ['expected' => $client->base_url, 'actual' => $baseUrl],
-        );
-    }
-
-    // ------------------------------------------------------------------
-    // Tahap 5 — schedules
+    // Tahap 4 — schedules
     // ------------------------------------------------------------------
 
     /**
@@ -1028,7 +796,7 @@ class LegacyImporter
                     FindingSeverity::Info,
                     'not_a_job',
                     'The cron line points to neither a client script nor the gateway: '.Str::limit($entry->command, 120),
-                    'opsifin_crontab',
+                    $this->crontabFilename,
                     $entry->lineNo,
                 );
                 $skipped++;
@@ -1049,7 +817,7 @@ class LegacyImporter
                     FindingSeverity::Error,
                     'invalid_cron_expression',
                     "The cron expression '{$entry->cronExpression}' is not valid.",
-                    'opsifin_crontab',
+                    $this->crontabFilename,
                     $entry->lineNo,
                 );
                 $skipped++;
@@ -1059,8 +827,6 @@ class LegacyImporter
 
             $this->checkSuspiciousInterval($entry);
 
-            $lockKey = $client->code.'.'.$template->key;
-
             $schedule = Schedule::firstOrNew([
                 'client_id' => $client->id,
                 'task_template_id' => $template->id,
@@ -1069,37 +835,30 @@ class LegacyImporter
 
             if ($schedule->exists) {
                 $this->finding(
-                    FindingSeverity::Warning,
+                    FindingSeverity::Info,
                     'duplicate_schedule',
                     sprintf(
-                        "Line %d duplicates the existing schedule %s / %s / '%s' (line %s).",
+                        'Line %d duplicates the same timing for %s / %s and was merged into one schedule.',
                         $entry->lineNo,
                         $client->code,
                         $template->key,
-                        $entry->cronExpression,
-                        $schedule->legacy_line_no,
                     ),
-                    'opsifin_crontab',
+                    $this->crontabFilename,
                     $entry->lineNo,
                 );
 
-                // Bila salah satu duplikat aktif, schedule dianggap aktif.
-                if (! $entry->isCommented) {
-                    $schedule->is_enabled = true;
-                    $schedule->legacy_was_commented = false;
-                    $schedule->save();
+                // Bila salah satunya aktif di legacy, simpan trace dari baris aktif.
+                if ($entry->isCommented || ! $schedule->legacy_was_commented) {
+                    continue;
                 }
-
-                continue;
             }
 
             $schedule->fill([
+                'cron_expression' => $entry->cronExpression,
                 'timezone' => config('opsifin_cron.default_timezone'),
-                'lock_key' => $lockKey,
-                'lock_mode' => config('opsifin_cron.defaults.lock_mode'),
-                'lock_wait_sec' => 0,
-                'is_enabled' => ! $entry->isCommented,
-                'catchup_policy' => 'skip',
+                // Safety boundary: an import never activates production traffic.
+                'is_enabled' => false,
+                'queue' => config('opsifin_cron.defaults.queue', 'default'),
                 'legacy_pattern' => $entry->pattern,
                 'legacy_line_no' => $entry->lineNo,
                 'legacy_command' => $entry->command,
@@ -1109,7 +868,6 @@ class LegacyImporter
                 'needs_review' => $client->needs_review,
             ]);
 
-            $schedule->recalculateNextRun();
             $schedule->save();
             $created++;
         }
@@ -1139,21 +897,22 @@ class LegacyImporter
                     $severity,
                     'gateway_client_unknown',
                     "The line calls gateway.sh with client '{$entry->clientKey}', but configs/{$entry->clientKey}.conf does not exist.".$suffix,
-                    'opsifin_crontab',
+                    $this->crontabFilename,
                     $entry->lineNo,
                 );
 
                 return [null, null];
             }
 
-            $templateKey = $this->gatewayToTemplate[$entry->taskKey] ?? null;
+            $templateKey = $this->gatewayToTemplate[$entry->taskKey]
+                ?? $this->canonicalTemplateKeyForName($entry->taskKey);
 
             if ($templateKey === null) {
                 $this->finding(
                     $severity,
                     'gateway_task_unknown',
                     "Gateway task '{$entry->taskKey}' is recognised by neither the gateway.sh routing nor jobs/.".$suffix,
-                    'opsifin_crontab',
+                    $this->crontabFilename,
                     $entry->lineNo,
                 );
 
@@ -1175,21 +934,22 @@ class LegacyImporter
                 $severity,
                 'client_folder_missing',
                 "The line calls a script in folder '{$entry->clientKey}/', but that folder does not exist in the source.".$suffix,
-                'opsifin_crontab',
+                $this->crontabFilename,
                 $entry->lineNo,
             );
 
             return [null, null];
         }
 
-        $templateKey = $this->scriptToTemplate[strtolower($entry->taskKey)] ?? null;
+        $templateKey = $this->clientScriptToTemplate[$entry->clientKey][strtolower($entry->taskKey)]
+            ?? $this->canonicalTemplateKeyForName($entry->taskKey);
 
         if ($templateKey === null) {
             $this->finding(
                 $severity,
-                'script_missing',
-                "The line calls {$entry->clientKey}/{$entry->taskKey}.sh, but that script does not exist (or failed to parse).".$suffix,
-                'opsifin_crontab',
+                'task_not_in_jobs_catalog',
+                "The line calls {$entry->clientKey}/{$entry->taskKey}.sh, but jobs/ has no canonical template for that task.".$suffix,
+                $this->crontabFilename,
                 $entry->lineNo,
             );
 
@@ -1202,12 +962,14 @@ class LegacyImporter
                 'script_not_in_client_folder',
                 "The line calls {$entry->clientKey}/{$entry->taskKey}.sh, but that file is not in the client folder ".
                 '(the template is still taken from another client with the same script name).',
-                'opsifin_crontab',
+                $this->crontabFilename,
                 $entry->lineNo,
             );
         }
 
-        return [$client, $this->templates[$templateKey]];
+        $template = $this->templates[$templateKey];
+
+        return [$client, $template];
     }
 
     /**
@@ -1241,7 +1003,7 @@ class LegacyImporter
                     $step,
                     60 % $step,
                 ),
-                'opsifin_crontab',
+                $this->crontabFilename,
                 $entry->lineNo,
                 context: ['expression' => $entry->cronExpression, 'step' => $step],
             );
@@ -1260,10 +1022,20 @@ class LegacyImporter
             return $this->cronEntriesCache;
         }
 
-        $file = $this->sourcePath.'/opsifin_crontab';
+        $file = null;
 
-        if (! is_file($file)) {
-            throw new RuntimeException("opsifin_crontab file not found in {$this->sourcePath}");
+        foreach (['opsifin_crontab', 'crontab.txt'] as $candidate) {
+            $candidatePath = $this->sourcePath.'/'.$candidate;
+
+            if (is_file($candidatePath)) {
+                $file = $candidatePath;
+                $this->crontabFilename = $candidate;
+                break;
+            }
+        }
+
+        if ($file === null) {
+            throw new RuntimeException("Crontab source file not found in {$this->sourcePath}; expected opsifin_crontab or crontab.txt");
         }
 
         return $this->cronEntriesCache = $this->crontabParser->parse(file_get_contents($file) ?: '');

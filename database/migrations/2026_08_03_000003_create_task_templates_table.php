@@ -14,14 +14,10 @@ return new class extends Migration
             $table->string('name');
             $table->text('description')->nullable();
 
-            $table->string('http_method', 8)->default('POST');
-            $table->string('path_template');                // /apiv_g/api_repost
-            $table->text('body_template')->nullable();      // raw body, boleh JSON string
-            $table->json('headers')->nullable();            // header tambahan di luar auth & content-type
-
-            $table->unsignedSmallInteger('default_timeout_sec')->default(60);
-            $table->unsignedSmallInteger('default_connect_timeout_sec')->default(10);
-            $table->unsignedTinyInteger('default_retries')->default(0);
+            $table->string('executor', 24)->default('http');
+            $table->json('config');
+            $table->unsignedSmallInteger('timeout_sec')->default(60);
+            $table->unsignedSmallInteger('connect_timeout_sec')->default(10);
             $table->boolean('is_active')->default(true);
 
             // Jejak asal data.

@@ -32,11 +32,6 @@ class Client extends Model
         return $this->hasMany(Schedule::class);
     }
 
-    public function overrides(): HasMany
-    {
-        return $this->hasMany(ClientTaskOverride::class);
-    }
-
     public function runs(): HasMany
     {
         return $this->hasMany(Run::class);

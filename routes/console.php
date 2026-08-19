@@ -8,26 +8,18 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-/*
-|--------------------------------------------------------------------------
-| Pekerjaan internal aplikasi
-|--------------------------------------------------------------------------
-|
-| Sengaja lewat penjadwal Laravel, bukan lewat crontab yang di-generate
-| aplikasi. Pemeriksaan missed run harus tetap hidup justru ketika crontab
-| hasil render bermasalah — kalau keduanya dijadwalkan di tempat yang sama,
-| satu kegagalan akan mematikan job sekaligus alarmnya.
-|
-| Butuh satu baris di crontab server:
-|   * * * * * cd /opt/opsifin-cron && php artisan schedule:run >> /dev/null 2>&1
-|
-*/
-
-Schedule::command('cron:check-missed')
-    ->everyFiveMinutes()
-    ->withoutOverlapping()
+Schedule::command('jobs:dispatch-due')
+    ->everyMinute()
+    ->name('opsifin:dispatch-due')
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 Schedule::command('cron:purge-runs')
-    ->dailyAt('03:15')
-    ->withoutOverlapping();
+    ->dailyAt('03:00')
+    ->name('opsifin:purge-runs')
+    ->withoutOverlapping(60);
+
+Schedule::command('telescope:prune --hours=168')
+    ->dailyAt('02:30')
+    ->name('opsifin:telescope-prune')
+    ->withoutOverlapping(60);

@@ -11,14 +11,7 @@ class CreateSchedule extends CreateRecord
 {
     protected static string $resource = ScheduleResource::class;
 
-    /**
-     * Matrix mengirim client dan task lewat query string, supaya klik pada sel
-     * kosong langsung membuka form dengan kombinasi itu sudah terisi.
-     *
-     * Diisi setelah parent::fillForm() dan lewat fillPartially(), bukan
-     * fill([...]) — kalau state diberikan sekaligus, default milik field lain
-     * (timezone, lock mode, timeout) tidak ikut terpasang.
-     */
+    /** Allow deep links to prefill an assignment without losing field defaults. */
     protected function fillForm(): void
     {
         parent::fillForm();
@@ -33,7 +26,6 @@ class CreateSchedule extends CreateRecord
         $this->form->fillPartially([
             'client_id' => $client->getKey(),
             'task_template_id' => $task->getKey(),
-            'lock_key' => $client->code.'.'.$task->key,
-        ], ['client_id', 'task_template_id', 'lock_key']);
+        ], ['client_id', 'task_template_id']);
     }
 }

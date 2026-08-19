@@ -4,18 +4,16 @@ namespace App\Enums;
 
 enum RunTrigger: string
 {
-    case Cron = 'cron';
+    case Schedule = 'schedule';
     case Manual = 'manual';
-    case Shadow = 'shadow';
-    case DryRun = 'dry_run';
+    case Retry = 'retry';
 
     public function label(): string
     {
         return match ($this) {
-            self::Cron => 'Cron',
+            self::Schedule => 'Schedule',
             self::Manual => 'Manual',
-            self::Shadow => 'Shadow',
-            self::DryRun => 'Dry run',
+            self::Retry => 'Retry',
         };
     }
 }

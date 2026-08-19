@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\Client;
-use App\Models\ClientTaskOverride;
 use App\Models\ImportRun;
 use App\Models\Schedule;
 use App\Models\TaskTemplate;
@@ -18,7 +17,7 @@ class CronImportCommand extends Command
     protected $signature = 'cron:import
         {--source= : Folder repo cron legacy (default: config opsifin_cron.source_path)}
         {--dry-run : Parse and report only, without writing to the database}
-        {--fresh : Empty clients/task_templates/overrides/schedules before importing}
+        {--fresh : Empty runs/schedules/task_templates/clients before importing}
         {--report= : Write the markdown reconciliation report to this path}';
 
     protected $description = 'Import the crontab, configs/*.conf and every legacy .sh script into the database';
@@ -34,6 +33,12 @@ class CronImportCommand extends Command
         }
 
         $dryRun = (bool) $this->option('dry-run');
+
+        if (! $this->option('fresh') && $this->domainHasData()) {
+            $this->error('Domain data already exists. Back up the database and rerun with --fresh for a deterministic import.');
+
+            return self::FAILURE;
+        }
 
         $this->info('Source   : '.$source);
         $this->info('Mode     : '.($dryRun ? 'DRY RUN (no database writes)' : 'APPLY'));
@@ -79,9 +84,17 @@ class CronImportCommand extends Command
      */
     private function truncateDomainTables(): void
     {
-        foreach (['runs', 'schedules', 'client_task_overrides', 'task_templates', 'clients'] as $table) {
+        foreach (['runs', 'schedules', 'task_templates', 'clients'] as $table) {
             DB::table($table)->delete();
         }
+    }
+
+    private function domainHasData(): bool
+    {
+        return Client::query()->exists()
+            || TaskTemplate::query()->exists()
+            || Schedule::query()->exists()
+            || DB::table('runs')->exists();
     }
 
     private function renderSummary(ImportRun $importRun): void
@@ -99,11 +112,11 @@ class CronImportCommand extends Command
             ['Gateway routes', $stats['gateway_routes'] ?? 0],
             ['—', '—'],
             ['Clients', Client::count()],
+            ['Canonical jobs in jobs/', $stats['canonical_job_templates'] ?? 0],
             ['Task templates', TaskTemplate::count()],
-            ['Client task overrides', ClientTaskOverride::count()],
             ['Schedules', Schedule::count()],
-            ['— enabled', Schedule::where('is_enabled', true)->count()],
-            ['— disabled (commented out)', Schedule::where('is_enabled', false)->count()],
+            ['— enabled', Schedule::where('is_enabled', true)->count().' (imports are always disabled)'],
+            ['— disabled pending cutover', Schedule::where('is_enabled', false)->count()],
             ['—', '—'],
             ['Crontab entries read', $stats['crontab_entries'] ?? 0],
             ['— could not be mapped', $stats['entries_skipped'] ?? 0],

@@ -22,7 +22,7 @@ class ClientForm
                     ->schema([
                         TextInput::make('code')
                             ->label('Code')
-                            ->helperText('Used as part of the lock key and the name in the crontab. Letters, digits, dots and dashes only.')
+                            ->helperText('Stable identifier used in filters and audit history. Letters, digits, dots and dashes only.')
                             ->required()
                             ->maxLength(64)
                             ->rule('regex:/^[A-Za-z0-9._-]+$/')
@@ -48,12 +48,12 @@ class ClientForm
 
                         Toggle::make('is_active')
                             ->label('Active')
-                            ->helperText('Inactive clients are not rendered into the crontab.')
+                            ->helperText('Pausing a client prevents every schedule for it from executing.')
                             ->default(true),
                     ]),
 
                 Section::make('Credentials')
-                    ->description('Stored encrypted (AES-256) and never written to a file or into the crontab, but shown in full here — the values have to be readable to be reconciled against the legacy scripts.')
+                    ->description('Stored encrypted and redacted from run output, logs, previews, and notifications. This form is restricted to administrators.')
                     ->columns(2)
                     ->schema([
                         Select::make('auth_type')
@@ -71,13 +71,18 @@ class ClientForm
                         TextInput::make('auth_secret')
                             ->label(fn (Get $get) => $get('auth_type') === AuthType::Bearer->value ? 'Token' : 'Password')
                             ->visible(fn (Get $get) => $get('auth_type') !== AuthType::None->value)
-                            ->autocomplete(false)
+                            ->password()
+                            ->revealable()
+                            ->autocomplete('off')
+                            ->helperText('Stored encrypted. Use the eye button to show or hide the current value.')
                             ->columnSpanFull(),
 
                         TextInput::make('auth_secret_key')
                             ->label('Secret key')
-                            ->helperText('Value for the SecretKey header (used by the remittance/BCA tasks). Leave empty if unused.')
-                            ->autocomplete(false)
+                            ->helperText('Value for the SecretKey header. Stored encrypted; use the eye button to show or hide it.')
+                            ->password()
+                            ->revealable()
+                            ->autocomplete('off')
                             ->columnSpanFull(),
                     ]),
 
