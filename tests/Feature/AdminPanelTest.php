@@ -160,7 +160,7 @@ class AdminPanelTest extends TestCase
             ->assertCanNotSeeTableRecords([$outsideRange]);
     }
 
-    public function test_editing_a_client_loads_decrypted_credentials_and_preserves_them(): void
+    public function test_editing_a_client_loads_stored_credentials_and_preserves_them(): void
     {
         $client = $this->schedule()->client;
 

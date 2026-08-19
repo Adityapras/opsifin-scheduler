@@ -10,9 +10,9 @@ dan hasil import — tanpa menjalankan `cron:import` kembali di VPS.
 
 1. Production menerima **salinan database aplikasi**, bukan hasil parse ulang
    `crontab-legacy`.
-2. `APP_KEY` source harus dipakai di production. Credential Client disimpan
-   terenkripsi dengan key ini; database tanpa key yang sama tidak dapat membaca
-   password, token, dan Secret Key.
+2. Credential Client disimpan plaintext/as-is. Ciphertext dari release lama
+   harus dikonversi satu kali pada source sebelum dump; setelah itu target tidak
+   membutuhkan `APP_KEY` source.
 3. Source dan target harus berada pada commit/release aplikasi yang kompatibel.
 4. Scheduler dan queue source harus dihentikan sebelum final dump agar tidak ada
    job yang berubah di tengah cutover.
@@ -32,7 +32,7 @@ tidak aman dibawa ke server baru dibersihkan.
 | Dipertahankan | Dibersihkan di target |
 | --- | --- |
 | `users` dan role | `sessions` lama |
-| `clients` dan credential terenkripsi | `cache` dan `cache_locks` |
+| `clients` dan credential as-is | `cache` dan `cache_locks` |
 | `task_templates` | payload `jobs` lama |
 | `schedules` | `job_batches` dan `failed_jobs` lama |
 | `runs`/execution history | entry Telescope lama |
@@ -104,24 +104,37 @@ Selesaikan blocker berikut sebelum lanjut:
 - ada run `running` yang belum selesai;
 - ada run `queued` atau payload `jobs` yang belum diputuskan;
 - disk tidak cukup untuk dump dan salinan terkompresi;
-- `APP_KEY` source tidak tersedia;
+- release yang memuat migration konversi credential belum tersedia di source;
 - commit aplikasi source tidak tercatat.
 
-## 5. Amankan APP_KEY tanpa membocorkannya
+## 5. Konversi credential lama sebelum dump
 
-Jangan mengirim key melalui chat, tiket, screenshot, atau shell history. Salin
-nilai `APP_KEY` source ke secret manager organisasi atau transfer `.env` melalui
-channel terenkripsi dengan akses terbatas.
+Release ini menyimpan credential Client secara plaintext/as-is. Bila database
+pernah dipakai oleh release yang memakai encrypted cast, migration
+`2026_08_19_000005_store_client_credentials_as_plaintext` akan mendekripsi nilai
+lama satu kali memakai `APP_KEY` source.
+
+Konversi dijalankan **di source sebelum final dump**, ketika key lama masih
+aktif. Command dijalankan pada maintenance window setelah scheduler dan worker
+dihentikan pada langkah berikutnya.
+
+Migration berhenti dengan pesan yang jelas bila menemukan ciphertext yang tidak
+dapat dibuka. Jangan mengganti credential satu per satu atau meneruskan dump
+dalam kondisi itu. Ciphertext lama secara teknis tidak bisa dipulihkan tanpa key
+yang mengenkripsinya.
+
+Setelah migration berhasil, semua nilai lama telah ditulis kembali as-is dan
+data baru juga langsung disimpan as-is. `APP_KEY` source tidak perlu ditransfer
+ke target. Key tetap jangan dikirim melalui chat, tiket, screenshot, atau shell
+history selama proses konversi.
 
 Checklist:
 
-- [ ] key dapat dipulihkan oleh minimal dua PIC berwenang;
-- [ ] file sementara permission `0600`;
-- [ ] key tidak muncul di output CI/CD;
-- [ ] target menggunakan `APP_CIPHER` yang sama;
-- [ ] key lama belum dihapus sebelum verifikasi credential target.
-
-Pada target migrasi existing, **jangan** menjalankan `artisan key:generate`.
+- [ ] source menggunakan key lama saat migration dijalankan;
+- [ ] migration konversi berstatus `Ran`;
+- [ ] tidak ada error `cannot be decrypted`;
+- [ ] credential dapat direveal dari UI source setelah migration;
+- [ ] backup database diperlakukan sebagai secret karena memuat plaintext.
 
 ## 6. Quiesce source untuk final dump
 
@@ -145,6 +158,14 @@ sudo systemctl reload cron
 
 Untuk aaPanel development, hentikan program Supervisor Opsifin dan disable task
 aaPanel Cron `artisan schedule:run` dari panel.
+
+Dengan seluruh proses runtime sudah berhenti, jalankan migration menggunakan
+`.env` source yang masih memiliki key lama:
+
+```bash
+php artisan migrate --force
+php artisan migrate:status
+```
 
 Verifikasi ulang:
 
@@ -305,15 +326,17 @@ sudo -u opsifin php8.4 artisan storage:link
 Pastikan `www-data` dapat membaca file dan symlink
 `public/storage -> storage/app/public` tersedia.
 
-## 13. Konfigurasi target dengan key source
+## 13. Konfigurasi target dengan key baru
 
-Isi `.env` target dengan database target dan `APP_KEY` source:
+Isi `.env` target dengan database target. Credential Client tidak bergantung
+pada `APP_KEY`, tetapi Laravel tetap memerlukan key untuk cookie dan layanan
+framework:
 
 ```dotenv
 APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://scheduler.example.com
-APP_KEY=<APP_KEY-DARI-SOURCE>
+APP_KEY=
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -328,6 +351,14 @@ QUEUE_CONNECTION=database
 DB_QUEUE=default
 DB_QUEUE_RETRY_AFTER=2000
 ```
+
+Generate key baru khusus target:
+
+```bash
+sudo -u opsifin php8.4 artisan key:generate --force
+```
+
+Tidak perlu menyalin `APP_KEY` source ke target.
 
 `CRON_SOURCE_PATH` boleh dikosongkan atau menunjuk arsip read-only. Jangan
 menjalankan `cron:import` pada target.
@@ -363,15 +394,16 @@ SELECT COUNT(*) AS queued_payloads FROM jobs;
 SELECT status, COUNT(*) FROM runs GROUP BY status ORDER BY status;
 ```
 
-Uji dekripsi tanpa mencetak secret:
+Pastikan migration konversi ikut terbawa dan berstatus `Ran`:
 
 ```bash
-sudo -u opsifin php8.4 artisan tinker --execute="dump(\App\Models\Client::all()->every(fn (\App\Models\Client \$client) => \$client->auth_secret === null || is_string(\$client->auth_secret)));"
+sudo -u opsifin php8.4 artisan migrate:status
 ```
 
-Output harus `true`. Error `The MAC is invalid` menandakan `APP_KEY` salah atau
-encrypted value rusak. Jangan mengganti credential satu per satu untuk menutupi
-kesalahan key; perbaiki key target.
+Cari `2026_08_19_000005_store_client_credentials_as_plaintext` pada output.
+Statusnya harus `Ran`. Bila nilai pada form Client masih berupa string panjang
+seperti payload JSON/base64 dan bukan credential asli, hentikan proses: dump
+dibuat sebelum konversi source selesai.
 
 Verifikasi aplikasi sebelum worker/cron aktif:
 
@@ -405,7 +437,8 @@ pantau status `queued -> running -> succeeded/failed`.
 ## 17. Validasi pasca-cutover
 
 - [ ] jumlah tabel domain cocok dengan source;
-- [ ] dekripsi credential berhasil tanpa mencetak nilainya;
+- [ ] migration konversi credential berstatus `Ran`;
+- [ ] credential Client dapat direveal sebagai nilai asli;
 - [ ] seluruh user yang dibutuhkan dapat login;
 - [ ] avatar dapat dibuka dari `/storage/avatars/...`;
 - [ ] worker berstatus `RUNNING` sebanyak dua process;

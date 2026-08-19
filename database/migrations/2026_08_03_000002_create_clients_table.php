@@ -18,8 +18,8 @@ return new class extends Migration
 
             $table->string('auth_type', 16)->default('basic');
             $table->string('auth_username')->nullable();
-            $table->text('auth_secret')->nullable();       // encrypted — password / bearer token
-            $table->text('auth_secret_key')->nullable();   // encrypted — API_SECRET_KEY dari *.conf
+            $table->text('auth_secret')->nullable();       // password / bearer token, stored as entered
+            $table->text('auth_secret_key')->nullable();   // API_SECRET_KEY from *.conf, stored as entered
 
             // Jejak asal data, dipakai laporan rekonsiliasi & verifikasi manual.
             $table->string('legacy_config_file')->nullable();  // configs/bravo.conf

@@ -21,9 +21,6 @@ class Client extends Model
             'auth_type' => AuthType::class,
             'is_active' => 'boolean',
             'needs_review' => 'boolean',
-            // Kredensial tidak pernah tersimpan plaintext di DB.
-            'auth_secret' => 'encrypted',
-            'auth_secret_key' => 'encrypted',
         ];
     }
 

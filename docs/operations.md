@@ -175,8 +175,9 @@ di server sama tidak dapat mendeteksi server mati total.
 
 Bagian ini hanya untuk import awal pada environment persiapan. VPS production
 yang menerima dump database existing **tidak menjalankan import ulang**. Gunakan
-prosedur [database-migration-vps.md](database-migration-vps.md), pertahankan
-`APP_KEY` source, lalu jadikan database production sebagai sumber kebenaran.
+prosedur [database-migration-vps.md](database-migration-vps.md), konversi sekali
+credential lama ke plaintext sebelum dump, lalu jadikan database production
+sebagai sumber kebenaran.
 
 Importer tidak mengaktifkan schedule dan tidak mengubah legacy cron.
 Task template hanya dibentuk dari `jobs/*.sh`; script pada folder client hanya

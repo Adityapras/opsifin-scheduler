@@ -39,11 +39,11 @@ class HttpExecutorTest extends TestCase
         $this->assertStringContainsString('Authorization: ••••••••', $preview);
     }
 
-    public function test_credentials_are_encrypted_and_http_results_are_normalized(): void
+    public function test_credentials_are_stored_as_entered_and_http_results_are_normalized(): void
     {
         $schedule = $this->schedule();
         $stored = DB::table('clients')->where('id', $schedule->client_id)->value('auth_secret');
-        $this->assertNotSame('super-secret', $stored);
+        $this->assertSame('super-secret', $stored);
 
         Http::fake(['client.example.test/*' => Http::response('{"ok":true}', 200)]);
         $executor = app(HttpExecutor::class);

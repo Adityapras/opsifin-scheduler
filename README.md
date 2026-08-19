@@ -32,7 +32,7 @@ jobs:dispatch-due
 
 ## Fitur
 
-- Client dengan base URL dan credential terenkripsi.
+- Client dengan base URL dan credential yang disimpan sesuai nilai input.
 - Job template HTTP reusable.
 - Assign job ke semua client aktif atau client terpilih.
 - Remove assignment dari client terpilih.

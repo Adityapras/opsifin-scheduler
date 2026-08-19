@@ -17,7 +17,8 @@ Setelah seluruh langkah selesai:
 - panel tersedia melalui HTTPS di `/admin`;
 - database existing beserta user, client, credential, template, schedule,
   execution log, dan audit history sudah dipindah;
-- password/token Client tetap dapat didekripsi karena `APP_KEY` sama;
+- password/token Client terbaca langsung karena disimpan as-is dan sudah
+  dikonversi sebelum dump;
 - dua database queue worker dikelola Supervisor;
 - satu system cron memanggil Laravel Scheduler setiap menit;
 - avatar user tersedia melalui `public/storage`;
@@ -270,7 +271,7 @@ APP_NAME="Opsifin Scheduler"
 APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://scheduler.example.com
-APP_KEY=<APP_KEY-DARI-ENVIRONMENT-SOURCE>
+APP_KEY=
 
 APP_LOCALE=en
 APP_FALLBACK_LOCALE=en
@@ -315,12 +316,17 @@ TELESCOPE_QUERY_WATCHER=false
 TELESCOPE_MODEL_WATCHER=false
 ```
 
-Karena database existing berisi Client credential terenkripsi, gunakan
-`APP_KEY` source dan **jangan menjalankan `artisan key:generate`**. Mengganti key
-setelah data tersimpan akan membuat credential tidak dapat didekripsi.
+Credential Client tidak lagi menggunakan enkripsi Laravel. Setelah `.env`
+dibuat, generate key baru khusus target untuk cookie dan layanan internal
+Laravel:
 
-Untuk fresh install tanpa data, `key:generate` boleh digunakan, tetapi itu bukan
-prosedur deployment project ini.
+```bash
+sudo -u opsifin php8.4 artisan key:generate --force
+```
+
+`APP_KEY` source tidak perlu dipindahkan setelah migration konversi credential
+berhasil dijalankan pada source. Jangan membagikan key source melalui chat atau
+menaruhnya di dump database.
 
 Amankan `.env`:
 
@@ -361,8 +367,9 @@ Ikuti [database-migration-vps.md](database-migration-vps.md) dari awal sampai
 akhir. Ringkasannya:
 
 1. catat commit dan jumlah data source;
-2. simpan `APP_KEY` source secara aman;
-3. pause/quiesce source, hentikan scheduler dan worker;
+2. pause/quiesce source, hentikan scheduler dan worker;
+3. jalankan migration release pada source untuk mengubah ciphertext lama menjadi
+   plaintext menggunakan `APP_KEY` source satu kali;
 4. pastikan `jobs = 0` serta tidak ada Run `queued/running`;
 5. buat dump konsisten dan checksum;
 6. arsipkan `storage/app/public/avatars`;
@@ -370,8 +377,8 @@ akhir. Ringkasannya:
 8. restore ke database target kosong;
 9. bersihkan session/cache/queue/Telescope runtime lama;
 10. restore avatar dan buat `storage:link`;
-11. jalankan migration release target;
-12. bandingkan jumlah record dan uji dekripsi.
+11. jalankan migration release target yang masih tertunda;
+12. bandingkan jumlah record dan verifikasi credential dari UI.
 
 Command target setelah restore:
 
@@ -705,10 +712,13 @@ sudo tail -n 100 storage/logs/laravel.log
 
 Periksa permission, root `/public`, route Livewire, `APP_URL`, dan PHP-FPM socket.
 
-### Credential menghasilkan `The MAC is invalid`
+### Credential masih terlihat seperti ciphertext
 
-`APP_KEY` target tidak sama dengan source. Hentikan worker, perbaiki key, clear
-config cache, lalu uji dekripsi kembali. Jangan reset credential massal.
+Migration `2026_08_19_000005_store_client_credentials_as_plaintext` belum
+dijalankan pada source atau dijalankan dengan `APP_KEY` yang salah. Jangan
+menyalakan worker. Pulihkan dump source, gunakan key lama satu kali untuk
+menjalankan migration konversi, lalu buat ulang dump. Ciphertext lama tidak bisa
+dipulihkan tanpa key yang mengenkripsinya.
 
 ### Run tertahan di queued
 
@@ -754,13 +764,16 @@ sudo -u opsifin php8.4 artisan queue:restart
 - [ ] MySQL tidak terekspos internet.
 - [ ] database credential menggunakan user khusus.
 - [ ] Telescope hanya dapat dibuka Administrator.
+- [ ] akses dan backup database dibatasi karena credential Client tersimpan
+  plaintext.
 
 ### Data
 
 - [ ] dump source dan checksum tersimpan.
-- [ ] `APP_KEY` source dipakai target.
+- [ ] migration konversi credential berhasil di source sebelum dump.
+- [ ] `APP_KEY` baru dibuat khusus target.
 - [ ] jumlah Clients, Job Templates, Schedules, Runs, Users, dan Audit cocok.
-- [ ] credential Client berhasil didekripsi.
+- [ ] credential Client dapat direveal dan dipakai tanpa ciphertext.
 - [ ] avatar telah dipindah dan tampil.
 - [ ] migration target selesai.
 - [ ] tidak ada payload queue/source session lama.

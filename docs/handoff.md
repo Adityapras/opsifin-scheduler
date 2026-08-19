@@ -262,8 +262,9 @@ Keputusan deployment terbaru:
    Predis, dan Redis tidak digunakan.
 2. Data production berasal dari dump database environment sekarang. Jangan
    menjalankan `cron:import` atau import ulang `crontab-legacy` pada VPS baru.
-3. `APP_KEY` source wajib dipertahankan karena password/token/Secret Key Client
-   terenkripsi dengan key tersebut.
+3. Credential Client disimpan plaintext/as-is. Jalankan migration konversi pada
+   source dengan `APP_KEY` lama sebelum final dump; key source tidak perlu
+   dipindahkan ke VPS setelah konversi berhasil.
 4. `storage/app/public/avatars` wajib ikut dipindah bersama database.
 5. Runtime sementara seperti queue payload, session, cache, failed jobs, dan
    entry Telescope source dibersihkan setelah restore di target.
@@ -275,7 +276,8 @@ Keputusan deployment terbaru:
 Prompt deployment berikutnya:
 
 > Baca tiga dokumen resmi di atas. Deploy release tetap ke VPS manual tanpa
-> aaPanel/Redis/Horizon. Migrasikan database existing beserta APP_KEY dan avatar;
+> aaPanel/Redis/Horizon. Migrasikan database existing beserta avatar setelah
+> konversi satu kali credential lama; generate `APP_KEY` baru di target;
 > jangan re-import legacy. Jangan menyalakan cron/worker target sebelum restore,
 > migration, count reconciliation, decryption check, dan smoke test read-only
 > lulus.

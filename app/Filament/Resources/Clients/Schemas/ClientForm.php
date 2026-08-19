@@ -53,7 +53,7 @@ class ClientForm
                     ]),
 
                 Section::make('Credentials')
-                    ->description('Stored encrypted and redacted from run output, logs, previews, and notifications. This form is restricted to administrators.')
+                    ->description('Stored as entered in the database and redacted from run output, logs, previews, and notifications. This form is restricted to administrators.')
                     ->columns(2)
                     ->schema([
                         Select::make('auth_type')
@@ -74,12 +74,12 @@ class ClientForm
                             ->password()
                             ->revealable()
                             ->autocomplete('off')
-                            ->helperText('Stored encrypted. Use the eye button to show or hide the current value.')
+                            ->helperText('Stored as entered. Use the eye button to show or hide the current value.')
                             ->columnSpanFull(),
 
                         TextInput::make('auth_secret_key')
                             ->label('Secret key')
-                            ->helperText('Value for the SecretKey header. Stored encrypted; use the eye button to show or hide it.')
+                            ->helperText('Value for the SecretKey header. Stored as entered; use the eye button to show or hide it.')
                             ->password()
                             ->revealable()
                             ->autocomplete('off')

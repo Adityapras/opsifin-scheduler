@@ -56,7 +56,7 @@ clients 1 ───── * schedules * ───── 1 task_templates
 
 ### Client
 
-Menyimpan base URL, timezone, active state, dan credential terenkripsi.
+Menyimpan base URL, timezone, active state, dan credential sesuai nilai input.
 Menonaktifkan client menghentikan seluruh assignment tanpa menghapus histori.
 
 ### Task Template
@@ -183,10 +183,12 @@ worker --tries=1
 
 ## Security boundary
 
-- credential memakai encrypted cast Laravel dan bergantung pada `APP_KEY`;
-- secret tidak dihydrate ke browser ketika edit client;
+- credential Client disimpan plaintext/as-is dan tidak bergantung pada `APP_KEY`;
+- secret disembunyikan dari serialisasi model dan hanya dapat dilihat melalui
+  form Administrator;
 - inspect request, response, dan error melewati redaction;
-- production wajib HTTPS dan MySQL tidak dibuka ke internet;
+- production wajib HTTPS, MySQL tidak dibuka ke internet, dan backup database
+  harus diperlakukan sebagai data sensitif karena memuat credential plaintext;
 - cron/worker berjalan sebagai service user, bukan root;
 - viewer tidak boleh melakukan mutation.
 

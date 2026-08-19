@@ -53,7 +53,7 @@ class TaskTemplateForm
                         ->columnSpanFull(),
                     KeyValue::make('config.headers')
                         ->label('Additional headers')->keyLabel('Header')->valueLabel('Value')
-                        ->helperText(new HtmlString('Use <code>{{client.secret_key}}</code> for the encrypted client secret key. Authorization is added automatically.'))
+                        ->helperText(new HtmlString('Use <code>{{client.secret_key}}</code> for the client secret key. Authorization is added automatically.'))
                         ->columnSpanFull(),
                 ]),
 

@@ -293,11 +293,14 @@ dipanggil template melalui `{{client.secret_key}}`.
 
 Password/token dan Secret Key:
 
-- disimpan encrypted di database;
+- disimpan di database persis seperti nilai yang dimasukkan (tidak dienkripsi);
 - ditampilkan masked pada form;
 - dapat dilihat dengan tombol mata oleh user yang boleh mengedit;
 - disamarkan dari preview, execution excerpt, log, dan audit;
-- tetap membutuhkan `APP_KEY` yang benar setelah pindah server.
+- tidak bergantung pada `APP_KEY` source ketika database dipindahkan.
+
+Karena credential tersimpan plaintext, akses database, dump, backup, dan akun
+Administrator harus dibatasi hanya untuk personel berwenang.
 
 #### Review & notes
 
