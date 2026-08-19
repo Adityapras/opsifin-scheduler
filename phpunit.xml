@@ -35,6 +35,7 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="TRUSTED_PROXIES" value="127.0.0.1"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="VIEW_COMPILED_PATH" value="/tmp/opsifin-crontab-test-views"/>
     </php>

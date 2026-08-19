@@ -53,7 +53,7 @@ override, atau watchdog internal.
 
 | Environment | Infrastruktur |
 | --- | --- |
-| Production | VPS manual: Nginx, PHP-FPM/CLI 8.4, MySQL, Supervisor, system cron, TLS |
+| Production | VPS manual: Apache2, PHP-FPM/CLI 8.4, MySQL, Supervisor, system cron, TLS |
 | Development | WSL2 + aaPanel |
 
 aaPanel hanya dipakai untuk development lokal.

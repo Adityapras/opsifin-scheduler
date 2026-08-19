@@ -1,0 +1,35 @@
+<VirtualHost *:80>
+    # Fase awal: ganti dengan IP server atau hostname sementara dari forwarder.
+    # Fase final: ganti dengan domain production sebelum menjalankan Certbot.
+    ServerName 10.10.20.15
+
+    DocumentRoot /var/www/opsifin-scheduler/public
+    DirectoryIndex index.php
+
+    <Directory /var/www/opsifin-scheduler/public>
+        Options -Indexes +FollowSymLinks
+        AllowOverride FileInfo Options
+        Require all granted
+    </Directory>
+
+    <FilesMatch "\.php$">
+        SetHandler "proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost/"
+    </FilesMatch>
+
+    <FilesMatch "\.(?:env|log|sql|sqlite|lock|bak)$">
+        Require all denied
+    </FilesMatch>
+
+    <LocationMatch "/\.(?!well-known(?:/|$))">
+        Require all denied
+    </LocationMatch>
+
+    <LocationMatch "^/build/">
+        Header always set Cache-Control "public, max-age=31536000, immutable"
+    </LocationMatch>
+
+    LimitRequestBody 10485760
+
+    ErrorLog ${APACHE_LOG_DIR}/opsifin-scheduler.error.log
+    CustomLog ${APACHE_LOG_DIR}/opsifin-scheduler.access.log combined
+</VirtualHost>

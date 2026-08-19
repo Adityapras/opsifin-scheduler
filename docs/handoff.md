@@ -260,24 +260,31 @@ Keputusan deployment terbaru:
 
 1. Production tetap memakai database queue dan dua Supervisor worker. Horizon,
    Predis, dan Redis tidak digunakan.
-2. Data production berasal dari dump database environment sekarang. Jangan
+2. Web server production memakai Apache2 + PHP 8.4-FPM, bukan Nginx. Template
+   resminya `deploy/vps/apache-vhost.conf.template`.
+3. Domain bukan prasyarat instalasi. Fase awal boleh memakai IP LAN/public atau
+   URL HTTPS forwarder; setelah stabil baru ubah `ServerName`, `APP_URL`, session
+   secure cookie, dan TLS ke domain final.
+4. Data production berasal dari dump database environment sekarang. Jangan
    menjalankan `cron:import` atau import ulang `crontab-legacy` pada VPS baru.
-3. Credential Client disimpan plaintext/as-is. Jalankan migration konversi pada
+5. Credential Client disimpan plaintext/as-is. Jalankan migration konversi pada
    source dengan `APP_KEY` lama sebelum final dump; key source tidak perlu
    dipindahkan ke VPS setelah konversi berhasil.
-4. `storage/app/public/avatars` wajib ikut dipindah bersama database.
-5. Runtime sementara seperti queue payload, session, cache, failed jobs, dan
+6. `storage/app/public/avatars` wajib ikut dipindah bersama database.
+7. Runtime sementara seperti queue payload, session, cache, failed jobs, dan
    entry Telescope source dibersihkan setelah restore di target.
-6. Dokumen resmi:
+8. Dokumen resmi:
    - `docs/deployment-vps.md`: instalasi dan go-live VPS end-to-end;
    - `docs/database-migration-vps.md`: dump/restore database existing;
    - `docs/user-guide.md`: konsep, role, dan seluruh module UI.
 
 Prompt deployment berikutnya:
 
-> Baca tiga dokumen resmi di atas. Deploy release tetap ke VPS manual tanpa
-> aaPanel/Redis/Horizon. Migrasikan database existing beserta avatar setelah
-> konversi satu kali credential lama; generate `APP_KEY` baru di target;
+> Baca tiga dokumen resmi di atas. Deploy release ke VPS manual memakai Apache2
+> dan PHP 8.4-FPM tanpa aaPanel/Redis/Horizon. Jalankan fase awal melalui IP atau
+> HTTPS forwarder jika domain belum siap. Migrasikan database existing beserta
+> avatar setelah konversi satu kali credential lama; generate `APP_KEY` baru di
+> target;
 > jangan re-import legacy. Jangan menyalakan cron/worker target sebelum restore,
-> migration, count reconciliation, decryption check, dan smoke test read-only
+> migration, count reconciliation, credential check, dan smoke test read-only
 > lulus.

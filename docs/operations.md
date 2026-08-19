@@ -11,7 +11,7 @@ Jalankan dari `/var/www/opsifin-scheduler`:
 sudo -u opsifin /usr/bin/php8.4 artisan schedule:list
 sudo -u opsifin /usr/bin/php8.4 artisan queue:failed
 sudo supervisorctl status opsifin-scheduler-worker:*
-sudo systemctl status cron nginx php8.4-fpm mysql --no-pager
+sudo systemctl status cron apache2 php8.4-fpm mysql --no-pager
 ```
 
 Di UI, periksa:
@@ -31,7 +31,7 @@ Di UI, periksa:
 | `storage/logs/laravel.log` | Exception aplikasi/importer/executor |
 | `/var/log/opsifin-scheduler/worker.log` | Lifecycle queue worker |
 | `/var/log/opsifin-scheduler/scheduler.log` | Output system cron dan dispatcher |
-| `/var/log/nginx/opsifin-scheduler.error.log` | Routing/PHP upstream error |
+| `/var/log/apache2/opsifin-scheduler.error.log` | Routing/PHP upstream error |
 | PHP-FPM journal/log | Fatal error dan worker FPM |
 
 Jangan menyalin `.env`, Authorization header, atau secret client ke tiket.
@@ -115,13 +115,15 @@ tetap benar saat worker lebih dari satu.
 ```bash
 sudo -u opsifin /usr/bin/php8.4 artisan optimize:clear
 sudo -u opsifin /usr/bin/php8.4 artisan route:list --path=admin
-sudo tail -n 100 /var/log/nginx/opsifin-scheduler.error.log
+sudo apache2ctl configtest
+sudo tail -n 100 /var/log/apache2/opsifin-scheduler.error.log
 sudo tail -n 100 /var/www/opsifin-scheduler/storage/logs/laravel.log
 ```
 
-Pastikan Nginx root mengarah ke `public`, route `/livewire-*` diteruskan ke
-Laravel, database session/cache dapat ditulis, dan URL diakses menggunakan
-domain yang sama dengan `APP_URL`.
+Pastikan Apache2 `DocumentRoot` mengarah ke `public`, `mod_rewrite` dan
+`mod_proxy_fcgi` aktif, `AllowOverride FileInfo Options` diterapkan, database
+session/cache dapat ditulis, dan URL diakses memakai domain yang sama dengan
+`APP_URL`.
 
 ## 8. Deploy aplikasi
 
@@ -134,7 +136,8 @@ sudo -u opsifin /usr/bin/php8.4 artisan migrate --force
 sudo -u opsifin /usr/bin/php8.4 artisan optimize
 sudo -u opsifin /usr/bin/php8.4 artisan queue:restart
 sudo systemctl reload php8.4-fpm
-sudo systemctl reload nginx
+sudo apache2ctl configtest
+sudo systemctl reload apache2
 ```
 
 Gunakan maintenance mode bila migration/asset change tidak backward compatible.
@@ -155,7 +158,7 @@ Backup minimal mencakup:
 
 - dump database terenkripsi/akses terbatas;
 - `.env` dan key management secara terpisah;
-- konfigurasi Nginx, Supervisor, cron, dan TLS;
+- konfigurasi Apache2, Supervisor, cron, dan TLS;
 - release/tag Git yang sedang berjalan.
 
 ## 10. External monitoring

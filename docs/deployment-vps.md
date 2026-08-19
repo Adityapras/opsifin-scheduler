@@ -1,9 +1,10 @@
 # Deployment Production ke VPS
 
 Panduan ini adalah runbook deployment production resmi Opsifin Scheduler tanpa
-aaPanel. Contoh memakai Ubuntu/Debian, Nginx, PHP 8.4, MySQL, Supervisor,
-system cron, dan domain `scheduler.example.com`. Sesuaikan package, socket, path,
-serta kebijakan keamanan dengan standar organisasi.
+aaPanel. Contoh memakai Ubuntu/Debian, Apache2, PHP 8.4-FPM, MySQL, Supervisor,
+dan system cron. Instalasi awal boleh memakai IP/forwarder; domain final contoh
+adalah `scheduler.example.com`. Sesuaikan package, socket, path, serta kebijakan
+keamanan dengan standar organisasi.
 
 Deployment yang dipilih untuk project ini menggunakan **database yang sudah
 berisi data dari environment sekarang**. Production tidak mengulang import dari
@@ -23,7 +24,7 @@ Setelah seluruh langkah selesai:
 - satu system cron memanggil Laravel Scheduler setiap menit;
 - avatar user tersedia melalui `public/storage`;
 - Telescope tersedia di `/telescope` hanya untuk Administrator;
-- Nginx, application log, worker log, dan scheduler log ter-rotate;
+- Apache2, application log, worker log, dan scheduler log ter-rotate;
 - backup, smoke test, rollback, dan PIC terdokumentasi.
 
 ## 2. Arsitektur production
@@ -32,7 +33,7 @@ Setelah seluruh langkah selesai:
 User / HTTPS monitor
           |
           v
-       Nginx :443
+      Apache2 :443
           |
           v
      PHP 8.4-FPM -------- Laravel / Filament -------- MySQL
@@ -66,7 +67,7 @@ Komponen yang **tidak** digunakan:
 | Deploy, Git, Composer, npm, Artisan | `opsifin` |
 | Supervisor queue worker | `opsifin` |
 | System cron Laravel Scheduler | `opsifin` |
-| Nginx dan PHP-FPM | `www-data` |
+| Apache2 dan PHP-FPM | `www-data` |
 | MySQL daemon | user service OS bawaan |
 
 `opsifin` memiliki source dan runtime files. `www-data` hanya membutuhkan akses
@@ -78,7 +79,8 @@ Isi sebelum mengeksekusi command:
 
 | Variable | Contoh | Nilai production |
 | --- | --- | --- |
-| Domain | `scheduler.example.com` | |
+| URL awal | `http://10.10.20.15` | |
+| Domain final (boleh pending) | `scheduler.example.com` | |
 | Repository | `git@...:opsifin-crontab.git` | |
 | Release tag/commit | `v1.0.0` | |
 | Project path | `/var/www/opsifin-scheduler` | |
@@ -104,7 +106,8 @@ yang memperhitungkan database, log, backup lokal sementara, serta pertumbuhan
 Kebutuhan software:
 
 - OS Ubuntu/Debian yang masih mendapat security update;
-- Nginx;
+- Apache2 dengan `mod_rewrite`, `mod_proxy_fcgi`, `mod_setenvif`,
+  `mod_headers`, dan TLS;
 - PHP CLI/FPM 8.4 beserta extension `bcmath`, `curl`, `fileinfo`, `gd`, `intl`,
   `mbstring`, `mysql`, `openssl`, `tokenizer`, `xml`, dan `zip`;
 - MySQL yang kompatibel dengan source;
@@ -119,10 +122,18 @@ Contoh instalasi package dasar:
 ```bash
 sudo apt update
 sudo apt upgrade
-sudo apt install nginx mysql-server supervisor cron git curl unzip ca-certificates logrotate
+sudo apt install apache2 mysql-server supervisor cron git curl unzip ca-certificates logrotate
 sudo apt install php8.4-cli php8.4-fpm php8.4-bcmath php8.4-curl php8.4-gd \
   php8.4-intl php8.4-mbstring php8.4-mysql php8.4-xml php8.4-zip
+
+sudo a2enmod rewrite proxy proxy_fcgi setenvif headers ssl
+sudo systemctl restart apache2 php8.4-fpm
 ```
+
+Gunakan PHP-FPM, bukan `mod_php`. Bila server lama masih memakai
+`mpm_prefork`/`libapache2-mod-php`, rencanakan perpindahan ke `mpm_event` dan
+PHP-FPM sebelum mengaktifkan site ini. Verifikasi module aktif dengan
+`apache2ctl -M`.
 
 Jika PHP 8.4 tidak tersedia di repository OS, gunakan repository PHP yang sudah
 disetujui organisasi. Jangan menambahkan repository pihak ketiga tanpa review.
@@ -136,7 +147,9 @@ php8.4 -r 'foreach (["bcmath","curl","fileinfo","gd","intl","mbstring","openssl"
 composer --version
 node --version
 npm --version
-nginx -v
+apache2ctl -v
+sudo apache2ctl configtest
+sudo apache2ctl -M | grep -E 'headers|proxy_fcgi|rewrite|setenvif|ssl'
 mysqld --version
 supervisord --version
 ```
@@ -159,16 +172,57 @@ Contoh pemeriksaan:
 ```bash
 timedatectl
 ss -lntup
-sudo systemctl status nginx mysql supervisor cron php8.4-fpm --no-pager
+sudo systemctl status apache2 mysql supervisor cron php8.4-fpm --no-pager
 ```
 
-## 7. DNS dan TLS preparation
+## 7. Akses awal tanpa domain dan persiapan domain final
 
-- arahkan record A/AAAA domain ke VPS;
-- turunkan TTL sebelum cutover bila DNS akan dipindah;
-- pastikan port 80/443 dapat dicapai;
-- siapkan email/owner renewal sertifikat;
-- jangan mengubah DNS final sebelum smoke test lokal selesai.
+Domain tidak diperlukan untuk menjalankan scheduler, database queue, worker,
+atau request HTTP ke endpoint Client. Domain hanya menjadi alamat stabil untuk
+user yang membuka panel.
+
+Gunakan salah satu mode akses awal berikut:
+
+| Mode | Contoh `APP_URL` | Catatan |
+| --- | --- | --- |
+| LAN/VPN | `http://10.10.20.15` | Pilihan paling sederhana untuk smoke test internal |
+| NAT/port forward | `http://203.0.113.10:8080` | Forward port luar ke Apache `:80`; batasi source IP |
+| HTTPS forwarder/tunnel | `https://temporary-url.example` | Tidak perlu DNS organisasi; URL diberikan forwarder |
+
+Untuk LAN atau NAT TCP biasa:
+
+- isi `ServerName` template Apache dengan IP server;
+- isi `APP_URL` dengan URL yang benar-benar dibuka user, termasuk port;
+- biarkan `TRUSTED_PROXIES=` kosong;
+- gunakan `SESSION_DOMAIN=null`;
+- gunakan `SESSION_SECURE_COOKIE=false` hanya selama akses masih HTTP internal.
+
+Untuk forwarder yang menghentikan HTTPS lalu meneruskan HTTP ke Apache:
+
+- forwarder wajib mengirim `Host`, `X-Forwarded-For`, `X-Forwarded-Host`,
+  `X-Forwarded-Port`, dan `X-Forwarded-Proto`;
+- isi `APP_URL` dengan URL HTTPS sementara;
+- isi `ServerName` dengan hostname sementara dari forwarder;
+- isi `TRUSTED_PROXIES` hanya dengan IP/CIDR forwarder, misalnya
+  `127.0.0.1,::1` jika connector berjalan pada host yang sama;
+- gunakan `SESSION_SECURE_COOKIE=true`;
+- jangan memakai `TRUSTED_PROXIES=*`.
+
+Jangan membuka panel HTTP polos ke internet umum. Login, session, dan nilai
+credential yang direveal dapat disadap. Untuk akses online sementara, gunakan
+HTTPS forwarder yang memiliki access control, VPN, atau firewall allowlist.
+
+Sambil aplikasi diuji, infra dapat menyiapkan fase final:
+
+- record A/AAAA domain ke VPS atau load balancer;
+- port 80/443;
+- email/owner renewal sertifikat;
+- external uptime monitoring;
+- waktu cutover dan rollback.
+
+Untuk staged deployment, selesaikan instalasi sampai Apache VirtualHost, lewati
+sementara langkah 16, lalu lanjutkan Supervisor, cron, dan smoke test memakai
+URL sementara. Kembali ke langkah 16 setelah domain siap.
 
 ## 8. Membuat service user dan directory
 
@@ -270,7 +324,7 @@ Baseline:
 APP_NAME="Opsifin Scheduler"
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://scheduler.example.com
+APP_URL=http://10.10.20.15
 APP_KEY=
 
 APP_LOCALE=en
@@ -291,6 +345,11 @@ DB_PASSWORD=<secret>
 SESSION_DRIVER=database
 SESSION_LIFETIME=120
 SESSION_ENCRYPT=false
+SESSION_DOMAIN=null
+SESSION_SECURE_COOKIE=false
+
+# Kosong untuk akses langsung/NAT. Isi IP/CIDR reverse proxy, bukan IP user.
+TRUSTED_PROXIES=
 
 CACHE_STORE=database
 QUEUE_CONNECTION=database
@@ -397,55 +456,82 @@ artisan db:wipe
 artisan db:seed
 artisan cron:import
 artisan cron:import --fresh
-artisan key:generate
 ```
 
 User sudah ikut dari database source. `cron:admin-create` hanya digunakan bila
-perlu membuat/reset satu Administrator secara sadar.
+perlu membuat/reset satu Administrator secara sadar. `artisan key:generate`
+hanya dijalankan satu kali saat membuat `.env` target pada langkah 12; jangan
+menjalankannya ulang setelah aplikasi aktif.
 
-## 15. Nginx virtual host
+## 15. Apache2 VirtualHost
 
-Salin template dan sesuaikan domain/socket:
+Salin template dan sesuaikan `ServerName` serta socket. Pada fase awal,
+`ServerName` boleh berupa IP server atau hostname sementara dari forwarder:
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo cp deploy/vps/nginx-site.conf.template \
-  /etc/nginx/sites-available/opsifin-scheduler
+sudo cp deploy/vps/apache-vhost.conf.template \
+  /etc/apache2/sites-available/opsifin-scheduler.conf
 
-sudo editor /etc/nginx/sites-available/opsifin-scheduler
-sudo ln -s /etc/nginx/sites-available/opsifin-scheduler \
-  /etc/nginx/sites-enabled/opsifin-scheduler
+sudo editor /etc/apache2/sites-available/opsifin-scheduler.conf
+sudo a2dissite 000-default.conf
+sudo a2ensite opsifin-scheduler.conf
 
-sudo nginx -t
-sudo systemctl reload nginx
+sudo apache2ctl configtest
+sudo systemctl reload apache2
 ```
 
 Kontrak penting:
 
-- `root` wajib `/var/www/opsifin-scheduler/public`;
-- PHP hanya diteruskan ke socket PHP 8.4-FPM;
-- `location ^~ /livewire-` tetap ada;
-- `/build/` dilayani sebagai immutable asset;
+- `DocumentRoot` wajib `/var/www/opsifin-scheduler/public`;
+- `AllowOverride FileInfo Options` mengaktifkan routing dari `public/.htaccess`;
+- `mod_rewrite`, `mod_proxy_fcgi`, `mod_setenvif`, dan `mod_headers` aktif;
+- PHP hanya diteruskan ke socket `/run/php/php8.4-fpm.sock`;
+- request Laravel dan Livewire yang bukan file fisik masuk ke `index.php`;
+- `/build/` mendapat cache immutable;
 - `.env`, log, SQL, backup, dan dotfile tidak dapat diunduh;
 - upload maksimum sesuai kebutuhan avatar;
-- log Nginx tidak berada di web root.
+- log Apache2 tidak berada di web root.
 
-Smoke test HTTP lokal sebelum DNS/TLS:
+Smoke test dari server dan jaringan internal sebelum domain/TLS final:
 
 ```bash
-curl -I -H 'Host: scheduler.example.com' http://127.0.0.1/admin/login
-curl -I -H 'Host: scheduler.example.com' http://127.0.0.1/livewire/livewire.min.js
+curl -I http://127.0.0.1/admin/login
+curl -I http://10.10.20.15/admin/login
+curl -I http://10.10.20.15/livewire/livewire.min.js
 ```
 
 Respons login `200` atau redirect aplikasi valid. `404` static page biasanya
-menandakan root, `try_files`, atau vhost salah.
+menandakan `DocumentRoot`, rewrite, atau VirtualHost salah. Respons `503`
+biasanya menandakan socket PHP-FPM tidak tersedia atau path socket tidak cocok.
 
-## 16. TLS
+## 16. Mengganti akses sementara menjadi domain dan TLS final
+
+Setelah aplikasi stabil dan domain telah diarahkan:
+
+1. ubah `ServerName` menjadi domain production;
+2. ubah `APP_URL` menjadi URL HTTPS final;
+3. set `SESSION_SECURE_COOKIE=true`;
+4. kosongkan `TRUSTED_PROXIES` bila Apache menerima koneksi langsung, atau isi
+   hanya IP load balancer/reverse proxy final;
+5. clear cache konfigurasi dan reload Apache;
+6. terbitkan sertifikat.
+
+```bash
+sudo editor /etc/apache2/sites-available/opsifin-scheduler.conf
+sudo editor /var/www/opsifin-scheduler/.env
+cd /var/www/opsifin-scheduler
+sudo -u opsifin php8.4 artisan optimize:clear
+sudo -u opsifin php8.4 artisan optimize
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+```
 
 Gunakan Certbot atau mekanisme certificate organisasi. Contoh Certbot:
 
 ```bash
-sudo certbot --nginx -d scheduler.example.com
+sudo apt install certbot python3-certbot-apache
+sudo certbot --apache -d scheduler.example.com
 sudo certbot renew --dry-run
 ```
 
@@ -463,6 +549,10 @@ Pastikan:
 - `APP_URL` memakai HTTPS;
 - cookie/session sesuai domain;
 - security header ditambahkan sesuai policy organisasi.
+
+Perubahan hostname membuat session browser lama tidak berlaku pada hostname
+baru; user cukup login kembali. Scheduler dan worker tidak perlu dihentikan
+hanya karena alamat panel berubah.
 
 ## 17. Supervisor database queue worker
 
@@ -547,7 +637,7 @@ Log map:
 | `storage/logs/laravel.log` | exception aplikasi |
 | `/var/log/opsifin-scheduler/worker.log` | lifecycle worker |
 | `/var/log/opsifin-scheduler/scheduler.log` | output system cron |
-| `/var/log/nginx/opsifin-scheduler.error.log` | error Nginx/upstream |
+| `/var/log/apache2/opsifin-scheduler.error.log` | error Apache2/PHP upstream |
 | PHP-FPM log/journal | error process FPM |
 
 ## 20. Validasi sebelum runtime dinyalakan
@@ -562,8 +652,12 @@ sudo -u opsifin php8.4 artisan route:list --path=admin
 sudo -u opsifin php8.4 artisan route:list --path=telescope
 sudo -u opsifin php8.4 artisan schedule:list
 sudo -u opsifin php8.4 artisan queue:failed
-curl -I https://scheduler.example.com/admin/login
+OPSIFIN_APP_URL=http://10.10.20.15
+curl -I "${OPSIFIN_APP_URL}/admin/login"
 ```
+
+Ganti `OPSIFIN_APP_URL` dengan URL sementara atau domain final yang sedang
+dipakai. Bila URL sementara berasal dari HTTPS forwarder, gunakan URL HTTPS itu.
 
 UI smoke test read-only:
 
@@ -617,7 +711,7 @@ bersamaan.
 ## 23. Health check pasca-go-live
 
 ```bash
-sudo systemctl status nginx php8.4-fpm mysql cron supervisor --no-pager
+sudo systemctl status apache2 php8.4-fpm mysql cron supervisor --no-pager
 sudo supervisorctl status 'opsifin-scheduler-worker:*'
 sudo -u opsifin php8.4 artisan schedule:list
 sudo -u opsifin php8.4 artisan queue:failed
@@ -649,7 +743,7 @@ Urutan aman:
 6. jalankan migration;
 7. rebuild cache;
 8. restart worker graceful;
-9. reload PHP-FPM/Nginx bila perlu;
+9. reload PHP-FPM/Apache2 bila perlu;
 10. jalankan smoke test;
 11. catat commit, migration, dan hasil validasi.
 
@@ -666,8 +760,8 @@ sudo -u opsifin php8.4 artisan migrate --force
 sudo -u opsifin php8.4 artisan optimize
 sudo -u opsifin php8.4 artisan queue:restart
 sudo systemctl reload php8.4-fpm
-sudo nginx -t
-sudo systemctl reload nginx
+sudo apache2ctl configtest
+sudo systemctl reload apache2
 ```
 
 Gunakan `artisan down` bila perubahan schema/asset tidak backward compatible.
@@ -693,7 +787,7 @@ Backup minimum:
 - dump MySQL harian dengan enkripsi;
 - `APP_KEY`/`.env` melalui secret manager terpisah;
 - `storage/app/public` untuk avatar;
-- konfigurasi Nginx, Supervisor, cron, TLS, dan logrotate;
+- konfigurasi Apache2, Supervisor, cron, TLS, dan logrotate;
 - tag/commit serta `composer.lock`/`package-lock.json`;
 - backup off-host dengan retention dan restore test.
 
@@ -705,12 +799,13 @@ Backup yang belum pernah direstore belum dapat dianggap valid.
 
 ```bash
 sudo -u opsifin php8.4 artisan optimize:clear
-sudo nginx -t
-sudo tail -n 100 /var/log/nginx/opsifin-scheduler.error.log
+sudo apache2ctl configtest
+sudo tail -n 100 /var/log/apache2/opsifin-scheduler.error.log
 sudo tail -n 100 storage/logs/laravel.log
 ```
 
-Periksa permission, root `/public`, route Livewire, `APP_URL`, dan PHP-FPM socket.
+Periksa permission, `DocumentRoot` `/public`, module rewrite/proxy_fcgi,
+`APP_URL`, dan socket PHP-FPM.
 
 ### Credential masih terlihat seperti ciphertext
 
@@ -781,7 +876,7 @@ sudo -u opsifin php8.4 artisan queue:restart
 
 ### Runtime
 
-- [ ] Nginx dan PHP-FPM sehat.
+- [ ] Apache2 dan PHP-FPM sehat.
 - [ ] dua Supervisor worker `RUNNING`.
 - [ ] satu system cron `artisan schedule:run` aktif.
 - [ ] tidak ada `cron:tick`, `cron:watchdog`, atau cron per job.

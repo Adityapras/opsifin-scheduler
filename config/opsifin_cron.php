@@ -38,4 +38,10 @@ return [
 
     'execution_margin_sec' => (int) env('CRON_EXECUTION_MARGIN_SEC', 60),
 
+    // Kosong untuk akses langsung/NAT. Isi hanya IP/CIDR reverse proxy tepercaya.
+    'trusted_proxies' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('TRUSTED_PROXIES', '')),
+    ))),
+
 ];
