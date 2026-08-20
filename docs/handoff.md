@@ -328,14 +328,19 @@ Scope release yang masih berada di working tree lokal:
 8. Follow-up screenshot `jelek3.jpg` menemukan error Alpine
    `Unexpected identifier 'setPalette'` dan overflow dari floating dropdown
    Filament. Final implementation tidak memakai `x-filament::dropdown` atau
-   multi-statement `x-init`: state diinisialisasi melalui method Alpine `init()`
-   dan popover diposisikan absolut terhadap tombol dengan batas lebar/tinggi
-   viewport. Pertahankan struktur ini agar overflow kanan tidak kembali.
+   multi-statement `x-init`; popover diposisikan absolut terhadap tombol dengan
+   batas lebar/tinggi viewport. Pertahankan struktur ini agar overflow kanan
+   tidak kembali.
+9. Follow-up screenshot `jelek4.jpg` membuktikan object literal Alpine di atribut
+   `x-data` tetap rapuh karena browser menormalisasi newline menjadi spasi.
+   Final state factory berada di `appearance-init.blade.php` sebagai
+   `window.opsifinAppearance(defaultTheme)`; atribut Blade hanya memanggil
+   factory tersebut. Jangan memindahkan method/state kembali ke atribut HTML.
 
 Verifikasi release lokal terakhir:
 
 ```text
-PHPUnit full suite   82 passed, 286 assertions
+PHPUnit full suite   82 passed, 287 assertions
 Laravel Pint        passed
 Blade view cache    passed
 Vite build          passed

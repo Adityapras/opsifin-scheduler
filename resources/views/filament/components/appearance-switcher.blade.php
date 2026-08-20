@@ -1,22 +1,5 @@
 <div
-    x-data="{
-        open: false,
-        palette: 'opsifin',
-        theme: 'system',
-        init() {
-            this.theme = localStorage.getItem('theme') || @js(filament()->getDefaultThemeMode()->value)
-            this.setPalette(document.documentElement.dataset.opsifinPalette || 'opsifin')
-        },
-        setPalette(value) {
-            this.palette = value
-            localStorage.setItem('opsifin-palette', value)
-            document.documentElement.dataset.opsifinPalette = value
-        },
-        setTheme(value) {
-            this.theme = value
-            window.dispatchEvent(new CustomEvent('theme-changed', { detail: value }))
-        },
-    }"
+    x-data="opsifinAppearance(@js(filament()->getDefaultThemeMode()->value))"
     x-on:keydown.escape.window="open = false"
     class="opsifin-appearance-switcher"
 >
