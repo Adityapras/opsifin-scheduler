@@ -2,7 +2,7 @@
 process_name=%(program_name)s_%(process_num)02d
 directory=/var/www/opsifin-scheduler
 command=/usr/bin/php8.4 artisan queue:work database --queue=default --sleep=1 --tries=1 --timeout=1900 --max-time=3600
-user=opsifin
+user=opsifin_admin
 numprocs=2
 autostart=true
 autorestart=true

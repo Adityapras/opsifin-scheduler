@@ -262,18 +262,26 @@ Keputusan deployment terbaru:
    Predis, dan Redis tidak digunakan.
 2. Web server production memakai Apache2 + PHP 8.4-FPM, bukan Nginx. Template
    resminya `deploy/vps/apache-vhost.conf.template`.
-3. Domain bukan prasyarat instalasi. Fase awal boleh memakai IP LAN/public atau
+3. Linux service user dan primary group production adalah
+   `opsifin_admin:opsifin_admin`.
+4. Domain bukan prasyarat instalasi. Fase awal boleh memakai IP LAN/public atau
    URL HTTPS forwarder; setelah stabil baru ubah `ServerName`, `APP_URL`, session
    secure cookie, dan TLS ke domain final.
-4. Data production berasal dari dump database environment sekarang. Jangan
+   Untuk HTTPS forwarder, samakan `ASSET_URL` dengan origin HTTPS, percaya hanya
+   IP/CIDR forwarder melalui `TRUSTED_PROXIES`, dan pastikan header
+   `X-Forwarded-Proto: https` diteruskan agar asset tidak terkena mixed-content.
+5. Data production berasal dari dump database environment sekarang. Jangan
    menjalankan `cron:import` atau import ulang `crontab-legacy` pada VPS baru.
-5. Credential Client disimpan plaintext/as-is. Jalankan migration konversi pada
+6. Credential Client disimpan plaintext/as-is. Jalankan migration konversi pada
    source dengan `APP_KEY` lama sebelum final dump; key source tidak perlu
    dipindahkan ke VPS setelah konversi berhasil.
-6. `storage/app/public/avatars` wajib ikut dipindah bersama database.
-7. Runtime sementara seperti queue payload, session, cache, failed jobs, dan
+7. Full database dump/restore boleh dilakukan manual melalui SQLyog. Gunakan
+   **Backup Database As SQL Dump** (structure + data), target database kosong,
+   koneksi SSH tunnel/VPN, dan rekonsiliasi jumlah data setelah import.
+8. `storage/app/public/avatars` wajib ikut dipindah bersama database.
+9. Runtime sementara seperti queue payload, session, cache, failed jobs, dan
    entry Telescope source dibersihkan setelah restore di target.
-8. Dokumen resmi:
+10. Dokumen resmi:
    - `docs/deployment-vps.md`: instalasi dan go-live VPS end-to-end;
    - `docs/database-migration-vps.md`: dump/restore database existing;
    - `docs/user-guide.md`: konsep, role, dan seluruh module UI.
@@ -281,10 +289,11 @@ Keputusan deployment terbaru:
 Prompt deployment berikutnya:
 
 > Baca tiga dokumen resmi di atas. Deploy release ke VPS manual memakai Apache2
-> dan PHP 8.4-FPM tanpa aaPanel/Redis/Horizon. Jalankan fase awal melalui IP atau
-> HTTPS forwarder jika domain belum siap. Migrasikan database existing beserta
-> avatar setelah konversi satu kali credential lama; generate `APP_KEY` baru di
-> target;
+> dan PHP 8.4-FPM sebagai user `opsifin_admin`, tanpa aaPanel/Redis/Horizon.
+> Jalankan fase awal melalui IP atau HTTPS forwarder jika domain belum siap.
+> Migrasikan database existing beserta avatar setelah konversi satu kali
+> credential lama. SQLyog boleh dipakai untuk full dump/restore manual ke
+> database target kosong. Generate `APP_KEY` baru di target;
 > jangan re-import legacy. Jangan menyalakan cron/worker target sebelum restore,
 > migration, count reconciliation, credential check, dan smoke test read-only
 > lulus.

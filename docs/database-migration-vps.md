@@ -183,6 +183,11 @@ menyesuaikan status Run melalui aplikasi.
 
 ## 7. Membuat dump source
 
+Pilih salah satu: CLI `mysqldump` atau SQLyog. Hasil keduanya harus berupa full
+SQL dump yang memuat struktur dan data seluruh object aplikasi.
+
+### Opsi A — CLI mysqldump
+
 Gunakan user database yang memiliki hak membaca seluruh tabel aplikasi. Opsi
 `--single-transaction` membuat snapshot konsisten untuk tabel InnoDB tanpa table
 lock panjang.
@@ -218,6 +223,39 @@ gzip -t /secure-backup/opsifin-scheduler/opsifin-scheduler.sql.gz
 zgrep -m1 'CREATE TABLE `clients`' /secure-backup/opsifin-scheduler/opsifin-scheduler.sql.gz
 zgrep -m1 'CREATE TABLE `schedules`' /secure-backup/opsifin-scheduler/opsifin-scheduler.sql.gz
 ```
+
+### Opsi B — export manual dengan SQLyog
+
+Gunakan koneksi source setelah scheduler/worker dihentikan dan migration
+credential plaintext berstatus `Ran`:
+
+1. Pilih database source pada Object Browser.
+2. Buka **Database -> Backup/Export -> Backup Database As SQL Dump** atau tekan
+   `Ctrl+Alt+E`.
+3. Pilih **Structure and Data** dan **Select All** untuk seluruh tables, views,
+   triggers, functions, procedures, dan events yang tersedia.
+4. Simpan sebagai satu file `.sql` dengan timestamp UTC.
+5. Aktifkan **Single transaction** dan jangan aktifkan **Lock all tables**.
+6. Aktifkan **Set FOREIGN_KEY_CHECKS=0** dan **Create Bulk Insert statements**.
+7. Nonaktifkan **Include USE database**, **Include CREATE database**, dan
+   **Include DROP statements**. Target database akan dipilih saat restore.
+8. Aktifkan **Ignore DEFINER** bila dump memuat view/routine/trigger agar restore
+   tidak bergantung pada account MySQL source.
+9. Jalankan export dan pastikan SQLyog melaporkan selesai tanpa error.
+
+Jangan menggunakan **Export Table Data as CSV, SQL, Excel...**. Menu tersebut
+ditujukan untuk export data/result set, bukan backup database lengkap.
+
+Validasi file dari PowerShell tanpa membukanya di editor:
+
+```powershell
+Get-Item .\opsifin-scheduler-20260819T120000Z.sql
+Get-FileHash .\opsifin-scheduler-20260819T120000Z.sql -Algorithm SHA256
+```
+
+Simpan nilai hash pada change ticket. File SQL memuat credential Client
+plaintext, sehingga wajib disimpan pada disk terenkripsi/arsip berpassword,
+tidak dikirim melalui chat, dan tidak diletakkan di repository atau web root.
 
 ## 8. Backup avatar dan file aplikasi
 
@@ -262,6 +300,11 @@ gzip -t opsifin-scheduler.sql.gz
 
 Jangan lanjut jika checksum berbeda.
 
+Jika restore dilakukan langsung dari workstation dengan SQLyog, file `.sql`
+tidak perlu disalin ke VPS. Gunakan koneksi SQLyog melalui SSH tunnel/VPN dan
+tetap simpan hash serta backup asli sampai cutover diterima. Port MySQL `3306`
+tidak boleh dibuka ke internet hanya untuk mempermudah import.
+
 ## 10. Menyiapkan database target
 
 Buat database kosong dan user terbatas:
@@ -288,10 +331,45 @@ dihapus dan dibuat ulang terlebih dahulu.
 
 Worker dan cron target harus masih belum aktif.
 
+### Opsi A — CLI
+
 ```bash
 gunzip -c /secure-import/opsifin-scheduler/opsifin-scheduler.sql.gz \
   | mysql --host=127.0.0.1 --user=opsifin_scheduler --password opsifin_scheduler
 ```
+
+### Opsi B — import manual dengan SQLyog
+
+1. Hubungkan SQLyog ke MySQL target melalui SSH tunnel/VPN. Pada SSH tab gunakan
+   account deploy/infra yang memang boleh login; pada MySQL tab gunakan
+   `opsifin_scheduler`. Jangan memberi shell login kepada service user
+   `opsifin_admin` hanya untuk kebutuhan SQLyog.
+2. Pastikan database `opsifin_scheduler` benar-benar kosong lalu pilih database
+   tersebut pada Object Browser.
+3. Buka **Tools -> Restore From SQL Dump** atau tekan `Ctrl+Shift+Q`.
+4. Pilih file `.sql` hasil export source dan database target
+   `opsifin_scheduler`.
+5. Aktifkan **Force disable FK checks** bila opsinya tersedia dan pastikan
+   eksekusi berhenti ketika menemukan error.
+6. Jalankan restore. Jangan menutup SQLyog atau memutus SSH tunnel sampai
+   selesai.
+7. Review tab Messages/Result: jumlah error harus nol.
+8. Refresh Object Browser dan pastikan tabel `migrations`, `clients`,
+   `task_templates`, `schedules`, `runs`, `users`, dan `audit_logs` tersedia.
+
+Jika edisi SQLyog yang dipakai tidak menyediakan SSH Tunnel, buat local SSH
+port forwarding dengan tool SSH organisasi atau gunakan VPN, lalu arahkan
+SQLyog ke port lokal tersebut. Jangan membuka MySQL ke internet.
+
+Jangan memakai schema/data synchronization sebagai pengganti full restore untuk
+cutover pertama. Jangan import ke database yang sebelumnya sudah menjalankan
+`artisan migrate` atau seeder.
+
+Referensi menu SQLyog:
+
+- [Backup Database as SQL Dump](https://webyog.com/article/116-backup-database-as-sql-dump-batch-scripts/)
+- [Connecting using SSH Tunneling](https://sqlyogkb.webyog.com/article/30-connecting-using-ssh-tunneling)
+- [Shortcut Backup/Restore SQL Dump](https://sqlyogkb.webyog.com/article/41-keyboard-shortcuts)
 
 Setelah restore, bersihkan state runtime source:
 
@@ -316,11 +394,11 @@ disentuh. Semua user akan login ulang karena session lama dibersihkan.
 ## 12. Restore avatar
 
 ```bash
-sudo -u opsifin tar -C /var/www/opsifin-scheduler/storage/app/public -xzf \
+sudo -u opsifin_admin tar -C /var/www/opsifin-scheduler/storage/app/public -xzf \
   /secure-import/opsifin-scheduler/opsifin-public-files.tar.gz
 
 cd /var/www/opsifin-scheduler
-sudo -u opsifin php8.4 artisan storage:link
+sudo -u opsifin_admin php8.4 artisan storage:link
 ```
 
 Pastikan `www-data` dapat membaca file dan symlink
@@ -355,7 +433,7 @@ DB_QUEUE_RETRY_AFTER=2000
 Generate key baru khusus target:
 
 ```bash
-sudo -u opsifin php8.4 artisan key:generate --force
+sudo -u opsifin_admin php8.4 artisan key:generate --force
 ```
 
 Tidak perlu menyalin `APP_KEY` source ke target.
@@ -370,9 +448,9 @@ menerapkan migration yang belum ada:
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo -u opsifin php8.4 artisan migrate:status
-sudo -u opsifin php8.4 artisan migrate --force
-sudo -u opsifin php8.4 artisan optimize
+sudo -u opsifin_admin php8.4 artisan migrate:status
+sudo -u opsifin_admin php8.4 artisan migrate --force
+sudo -u opsifin_admin php8.4 artisan optimize
 ```
 
 Selalu backup dump asli sebelum migration. Jangan memakai `migrate:fresh`,
@@ -397,7 +475,7 @@ SELECT status, COUNT(*) FROM runs GROUP BY status ORDER BY status;
 Pastikan migration konversi ikut terbawa dan berstatus `Ran`:
 
 ```bash
-sudo -u opsifin php8.4 artisan migrate:status
+sudo -u opsifin_admin php8.4 artisan migrate:status
 ```
 
 Cari `2026_08_19_000005_store_client_credentials_as_plaintext` pada output.

@@ -13,6 +13,7 @@ class TrustedProxyTest extends TestCase
         Route::get('/_trusted-proxy-test', fn (Request $request) => [
             'secure' => $request->isSecure(),
             'url' => url('/admin'),
+            'asset' => asset('build/assets/app.css'),
         ]);
 
         $this
@@ -27,6 +28,24 @@ class TrustedProxyTest extends TestCase
             ->assertJson([
                 'secure' => true,
                 'url' => 'https://temporary-forwarder.example/admin',
+                'asset' => 'https://temporary-forwarder.example/build/assets/app.css',
+            ]);
+    }
+
+    public function test_asset_url_can_use_an_explicit_https_origin(): void
+    {
+        config()->set('app.asset_url', 'https://temporary-forwarder.example');
+        $this->app->forgetInstance('url');
+
+        Route::get('/_asset-url-test', fn () => [
+            'asset' => asset('build/assets/app.css'),
+        ]);
+
+        $this
+            ->get('/_asset-url-test')
+            ->assertOk()
+            ->assertJson([
+                'asset' => 'https://temporary-forwarder.example/build/assets/app.css',
             ]);
     }
 

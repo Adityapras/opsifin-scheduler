@@ -64,14 +64,14 @@ Komponen yang **tidak** digunakan:
 
 | Process | User yang disarankan |
 | --- | --- |
-| Deploy, Git, Composer, npm, Artisan | `opsifin` |
-| Supervisor queue worker | `opsifin` |
-| System cron Laravel Scheduler | `opsifin` |
+| Deploy, Git, Composer, npm, Artisan | `opsifin_admin` |
+| Supervisor queue worker | `opsifin_admin` |
+| System cron Laravel Scheduler | `opsifin_admin` |
 | Apache2 dan PHP-FPM | `www-data` |
 | MySQL daemon | user service OS bawaan |
 
-`opsifin` memiliki source dan runtime files. `www-data` hanya membutuhkan akses
-baca source serta akses tulis ke `storage` dan `bootstrap/cache`.
+`opsifin_admin` memiliki source dan runtime files. `www-data` hanya membutuhkan
+akses baca source serta akses tulis ke `storage` dan `bootstrap/cache`.
 
 ## 4. Worksheet deployment
 
@@ -84,7 +84,7 @@ Isi sebelum mengeksekusi command:
 | Repository | `git@...:opsifin-crontab.git` | |
 | Release tag/commit | `v1.0.0` | |
 | Project path | `/var/www/opsifin-scheduler` | |
-| App user | `opsifin` | |
+| App user | `opsifin_admin` | |
 | Web user | `www-data` | |
 | PHP binary | `/usr/bin/php8.4` | |
 | PHP-FPM socket | `/run/php/php8.4-fpm.sock` | |
@@ -193,6 +193,7 @@ Untuk LAN atau NAT TCP biasa:
 
 - isi `ServerName` template Apache dengan IP server;
 - isi `APP_URL` dengan URL yang benar-benar dibuka user, termasuk port;
+- biarkan `ASSET_URL=` kosong atau samakan dengan `APP_URL`;
 - biarkan `TRUSTED_PROXIES=` kosong;
 - gunakan `SESSION_DOMAIN=null`;
 - gunakan `SESSION_SECURE_COOKIE=false` hanya selama akses masih HTTP internal.
@@ -202,6 +203,7 @@ Untuk forwarder yang menghentikan HTTPS lalu meneruskan HTTP ke Apache:
 - forwarder wajib mengirim `Host`, `X-Forwarded-For`, `X-Forwarded-Host`,
   `X-Forwarded-Port`, dan `X-Forwarded-Proto`;
 - isi `APP_URL` dengan URL HTTPS sementara;
+- isi `ASSET_URL` dengan origin HTTPS yang sama, tanpa slash di belakang;
 - isi `ServerName` dengan hostname sementara dari forwarder;
 - isi `TRUSTED_PROXIES` hanya dengan IP/CIDR forwarder, misalnya
   `127.0.0.1,::1` jika connector berjalan pada host yang sama;
@@ -227,14 +229,14 @@ URL sementara. Kembali ke langkah 16 setelah domain siap.
 ## 8. Membuat service user dan directory
 
 ```bash
-sudo adduser --system --group --home /var/www/opsifin-scheduler opsifin
+sudo adduser --system --group --home /var/www/opsifin-scheduler opsifin_admin
 sudo mkdir -p /var/www/opsifin-scheduler
 sudo mkdir -p /var/log/opsifin-scheduler
 sudo mkdir -p /secure-backup/opsifin-scheduler
 sudo mkdir -p /secure-import/opsifin-scheduler
 
-sudo chown -R opsifin:opsifin /var/www/opsifin-scheduler
-sudo chown -R opsifin:www-data /var/log/opsifin-scheduler
+sudo chown -R opsifin_admin:opsifin_admin /var/www/opsifin-scheduler
+sudo chown -R opsifin_admin:www-data /var/log/opsifin-scheduler
 sudo chmod 2775 /var/log/opsifin-scheduler
 sudo chmod 700 /secure-backup/opsifin-scheduler /secure-import/opsifin-scheduler
 ```
@@ -242,7 +244,7 @@ sudo chmod 700 /secure-backup/opsifin-scheduler /secure-import/opsifin-scheduler
 Tambahkan web user ke group aplikasi bila kebijakan server mengizinkan:
 
 ```bash
-sudo usermod -aG opsifin www-data
+sudo usermod -aG opsifin_admin www-data
 sudo systemctl restart php8.4-fpm
 ```
 
@@ -272,11 +274,11 @@ command line yang dapat terlihat melalui history atau process list.
 Clone sebagai user aplikasi:
 
 ```bash
-sudo -u opsifin git clone <repository-url> /var/www/opsifin-scheduler
+sudo -u opsifin_admin git clone <repository-url> /var/www/opsifin-scheduler
 cd /var/www/opsifin-scheduler
-sudo -u opsifin git fetch --tags --prune
-sudo -u opsifin git checkout <release-tag-or-commit>
-sudo -u opsifin git rev-parse HEAD
+sudo -u opsifin_admin git fetch --tags --prune
+sudo -u opsifin_admin git checkout <release-tag-or-commit>
+sudo -u opsifin_admin git rev-parse HEAD
 ```
 
 Production wajib memakai tag atau commit tetap. Catat hash pada change ticket.
@@ -286,14 +288,14 @@ Jangan deploy working tree lokal yang belum ditinjau tanpa membentuk release.
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo -u opsifin composer install \
+sudo -u opsifin_admin composer install \
   --no-dev \
   --prefer-dist \
   --optimize-autoloader \
   --no-interaction
 
-sudo -u opsifin npm ci
-sudo -u opsifin npm run build
+sudo -u opsifin_admin npm ci
+sudo -u opsifin_admin npm run build
 ```
 
 Verifikasi artefak:
@@ -313,8 +315,8 @@ secret:
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo -u opsifin cp .env.example .env
-sudo chown opsifin:www-data .env
+sudo -u opsifin_admin cp .env.example .env
+sudo chown opsifin_admin:www-data .env
 sudo chmod 0640 .env
 ```
 
@@ -325,6 +327,7 @@ APP_NAME="Opsifin Scheduler"
 APP_ENV=production
 APP_DEBUG=false
 APP_URL=http://10.10.20.15
+ASSET_URL=
 APP_KEY=
 
 APP_LOCALE=en
@@ -380,7 +383,7 @@ dibuat, generate key baru khusus target untuk cookie dan layanan internal
 Laravel:
 
 ```bash
-sudo -u opsifin php8.4 artisan key:generate --force
+sudo -u opsifin_admin php8.4 artisan key:generate --force
 ```
 
 `APP_KEY` source tidak perlu dipindahkan setelah migration konversi credential
@@ -390,30 +393,30 @@ menaruhnya di dump database.
 Amankan `.env`:
 
 ```bash
-sudo chown opsifin:www-data /var/www/opsifin-scheduler/.env
+sudo chown opsifin_admin:www-data /var/www/opsifin-scheduler/.env
 sudo chmod 0640 /var/www/opsifin-scheduler/.env
 ```
 
 Mode `0640` diperlukan karena PHP-FPM berjalan sebagai `www-data`. Jika pool
-PHP-FPM khusus juga berjalan sebagai `opsifin`, mode dapat diperketat menjadi
-`0600`.
+PHP-FPM khusus juga berjalan sebagai `opsifin_admin`, mode dapat diperketat
+menjadi `0600`.
 
 ## 13. Permission runtime dan public storage
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo chown -R opsifin:opsifin .
-sudo chown -R opsifin:www-data storage bootstrap/cache
+sudo chown -R opsifin_admin:opsifin_admin .
+sudo chown -R opsifin_admin:www-data storage bootstrap/cache
 sudo find storage bootstrap/cache -type d -exec chmod 2775 {} \;
 sudo find storage bootstrap/cache -type f -exec chmod 0664 {} \;
 
-sudo -u opsifin php8.4 artisan storage:link
+sudo -u opsifin_admin php8.4 artisan storage:link
 ```
 
 Verifikasi:
 
 ```bash
-sudo -u opsifin test -w storage/logs
+sudo -u opsifin_admin test -w storage/logs
 sudo -u www-data test -w storage/logs
 sudo -u www-data test -w bootstrap/cache
 sudo -u www-data test -r public/index.php
@@ -430,10 +433,11 @@ akhir. Ringkasannya:
 3. jalankan migration release pada source untuk mengubah ciphertext lama menjadi
    plaintext menggunakan `APP_KEY` source satu kali;
 4. pastikan `jobs = 0` serta tidak ada Run `queued/running`;
-5. buat dump konsisten dan checksum;
+5. buat full SQL dump konsisten melalui `mysqldump` atau SQLyog dan catat
+   checksum;
 6. arsipkan `storage/app/public/avatars`;
 7. transfer dan verifikasi checksum;
-8. restore ke database target kosong;
+8. restore ke database target kosong melalui CLI atau SQLyog;
 9. bersihkan session/cache/queue/Telescope runtime lama;
 10. restore avatar dan buat `storage:link`;
 11. jalankan migration release target yang masih tertunda;
@@ -443,9 +447,9 @@ Command target setelah restore:
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo -u opsifin php8.4 artisan migrate:status
-sudo -u opsifin php8.4 artisan migrate --force
-sudo -u opsifin php8.4 artisan optimize
+sudo -u opsifin_admin php8.4 artisan migrate:status
+sudo -u opsifin_admin php8.4 artisan migrate --force
+sudo -u opsifin_admin php8.4 artisan optimize
 ```
 
 Jangan menjalankan:
@@ -511,18 +515,19 @@ Setelah aplikasi stabil dan domain telah diarahkan:
 
 1. ubah `ServerName` menjadi domain production;
 2. ubah `APP_URL` menjadi URL HTTPS final;
-3. set `SESSION_SECURE_COOKIE=true`;
-4. kosongkan `TRUSTED_PROXIES` bila Apache menerima koneksi langsung, atau isi
+3. ubah `ASSET_URL` menjadi origin HTTPS final tanpa slash di belakang;
+4. set `SESSION_SECURE_COOKIE=true`;
+5. kosongkan `TRUSTED_PROXIES` bila Apache menerima koneksi langsung, atau isi
    hanya IP load balancer/reverse proxy final;
-5. clear cache konfigurasi dan reload Apache;
-6. terbitkan sertifikat.
+6. clear cache konfigurasi dan reload Apache;
+7. terbitkan sertifikat.
 
 ```bash
 sudo editor /etc/apache2/sites-available/opsifin-scheduler.conf
 sudo editor /var/www/opsifin-scheduler/.env
 cd /var/www/opsifin-scheduler
-sudo -u opsifin php8.4 artisan optimize:clear
-sudo -u opsifin php8.4 artisan optimize
+sudo -u opsifin_admin php8.4 artisan optimize:clear
+sudo -u opsifin_admin php8.4 artisan optimize
 sudo apache2ctl configtest
 sudo systemctl reload apache2
 ```
@@ -546,7 +551,7 @@ Pastikan:
 - HTTP redirect ke HTTPS;
 - sertifikat dan chain valid;
 - renewal timer aktif;
-- `APP_URL` memakai HTTPS;
+- `APP_URL` dan `ASSET_URL` memakai origin HTTPS final;
 - cookie/session sesuai domain;
 - security header ditambahkan sesuai policy organisasi.
 
@@ -587,7 +592,7 @@ worker kedua saat worker pertama masih berjalan. Tidak ada automatic HTTP retry.
 Saat deployment kode berikutnya:
 
 ```bash
-sudo -u opsifin php8.4 artisan queue:restart
+sudo -u opsifin_admin php8.4 artisan queue:restart
 sudo supervisorctl status 'opsifin-scheduler-worker:*'
 ```
 
@@ -605,7 +610,7 @@ sudo systemctl restart cron
 Isi:
 
 ```cron
-* * * * * opsifin cd /var/www/opsifin-scheduler && /usr/bin/php8.4 artisan schedule:run >> /var/log/opsifin-scheduler/scheduler.log 2>&1
+* * * * * opsifin_admin cd /var/www/opsifin-scheduler && /usr/bin/php8.4 artisan schedule:run >> /var/log/opsifin-scheduler/scheduler.log 2>&1
 ```
 
 Verifikasi tidak ada task lama:
@@ -646,12 +651,12 @@ Dengan cron dan worker target masih berhenti:
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo -u opsifin php8.4 artisan about --only=environment
-sudo -u opsifin php8.4 artisan migrate:status
-sudo -u opsifin php8.4 artisan route:list --path=admin
-sudo -u opsifin php8.4 artisan route:list --path=telescope
-sudo -u opsifin php8.4 artisan schedule:list
-sudo -u opsifin php8.4 artisan queue:failed
+sudo -u opsifin_admin php8.4 artisan about --only=environment
+sudo -u opsifin_admin php8.4 artisan migrate:status
+sudo -u opsifin_admin php8.4 artisan route:list --path=admin
+sudo -u opsifin_admin php8.4 artisan route:list --path=telescope
+sudo -u opsifin_admin php8.4 artisan schedule:list
+sudo -u opsifin_admin php8.4 artisan queue:failed
 OPSIFIN_APP_URL=http://10.10.20.15
 curl -I "${OPSIFIN_APP_URL}/admin/login"
 ```
@@ -713,8 +718,8 @@ bersamaan.
 ```bash
 sudo systemctl status apache2 php8.4-fpm mysql cron supervisor --no-pager
 sudo supervisorctl status 'opsifin-scheduler-worker:*'
-sudo -u opsifin php8.4 artisan schedule:list
-sudo -u opsifin php8.4 artisan queue:failed
+sudo -u opsifin_admin php8.4 artisan schedule:list
+sudo -u opsifin_admin php8.4 artisan queue:failed
 sudo tail -n 100 /var/log/opsifin-scheduler/scheduler.log
 sudo tail -n 100 /var/log/opsifin-scheduler/worker.log
 sudo tail -n 100 /var/www/opsifin-scheduler/storage/logs/laravel.log
@@ -751,14 +756,14 @@ Contoh:
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo -u opsifin git fetch --tags --prune
-sudo -u opsifin git checkout <new-release-tag>
-sudo -u opsifin composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
-sudo -u opsifin npm ci
-sudo -u opsifin npm run build
-sudo -u opsifin php8.4 artisan migrate --force
-sudo -u opsifin php8.4 artisan optimize
-sudo -u opsifin php8.4 artisan queue:restart
+sudo -u opsifin_admin git fetch --tags --prune
+sudo -u opsifin_admin git checkout <new-release-tag>
+sudo -u opsifin_admin composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+sudo -u opsifin_admin npm ci
+sudo -u opsifin_admin npm run build
+sudo -u opsifin_admin php8.4 artisan migrate --force
+sudo -u opsifin_admin php8.4 artisan optimize
+sudo -u opsifin_admin php8.4 artisan queue:restart
 sudo systemctl reload php8.4-fpm
 sudo apache2ctl configtest
 sudo systemctl reload apache2
@@ -798,14 +803,44 @@ Backup yang belum pernah direstore belum dapat dianggap valid.
 ### Login 500 atau asset tidak tampil
 
 ```bash
-sudo -u opsifin php8.4 artisan optimize:clear
+sudo -u opsifin_admin php8.4 artisan optimize:clear
 sudo apache2ctl configtest
 sudo tail -n 100 /var/log/apache2/opsifin-scheduler.error.log
 sudo tail -n 100 storage/logs/laravel.log
 ```
 
 Periksa permission, `DocumentRoot` `/public`, module rewrite/proxy_fcgi,
-`APP_URL`, dan socket PHP-FPM.
+`APP_URL`, `ASSET_URL`, dan socket PHP-FPM.
+
+Jika halaman terbuka melalui HTTPS tetapi browser melaporkan **Mixed Content**,
+sesuaikan `.env` dengan URL yang benar-benar dibuka user:
+
+```dotenv
+APP_URL=https://temporary-url.example
+ASSET_URL=https://temporary-url.example
+SESSION_SECURE_COOKIE=true
+TRUSTED_PROXIES=127.0.0.1,::1
+```
+
+Nilai `TRUSTED_PROXIES` di atas hanya benar jika forwarder berjalan pada host
+yang sama. Jika tidak, gunakan IP/CIDR sumber reverse proxy yang sebenarnya.
+Pastikan forwarder mengirim `X-Forwarded-Proto: https`, lalu muat ulang cache
+konfigurasi dan service web:
+
+```bash
+cd /var/www/opsifin-scheduler
+sudo -u opsifin_admin php8.4 artisan optimize:clear
+sudo -u opsifin_admin php8.4 artisan optimize
+sudo systemctl reload php8.4-fpm
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+```
+
+Verifikasi `public/build/manifest.json` tersedia. Di DevTools browser, URL CSS,
+JavaScript, Livewire, dan gambar harus memakai `https://` atau path relatif,
+bukan `http://`. Jika skemanya sudah HTTPS tetapi respons asset `404`, periksa
+hasil `npm run build`, Apache `DocumentRoot`, dan permission; kasus itu bukan
+masalah trusted proxy.
 
 ### Credential masih terlihat seperti ciphertext
 
@@ -819,7 +854,7 @@ dipulihkan tanpa key yang mengenkripsinya.
 
 ```bash
 sudo supervisorctl status 'opsifin-scheduler-worker:*'
-sudo -u opsifin php8.4 artisan queue:failed
+sudo -u opsifin_admin php8.4 artisan queue:failed
 sudo tail -n 100 /var/log/opsifin-scheduler/worker.log
 ```
 
@@ -827,7 +862,7 @@ sudo tail -n 100 /var/log/opsifin-scheduler/worker.log
 
 ```bash
 sudo systemctl status cron --no-pager
-sudo -u opsifin php8.4 artisan schedule:run -v
+sudo -u opsifin_admin php8.4 artisan schedule:run -v
 sudo tail -n 100 /var/log/opsifin-scheduler/scheduler.log
 ```
 
@@ -836,7 +871,7 @@ sudo tail -n 100 /var/log/opsifin-scheduler/scheduler.log
 ```bash
 test -L public/storage
 ls -la storage/app/public/avatars
-sudo -u opsifin php8.4 artisan storage:link
+sudo -u opsifin_admin php8.4 artisan storage:link
 ```
 
 ### Telescope tidak merekam request baru
@@ -844,8 +879,8 @@ sudo -u opsifin php8.4 artisan storage:link
 Clear config cache dan restart long-running queue workers:
 
 ```bash
-sudo -u opsifin php8.4 artisan optimize:clear
-sudo -u opsifin php8.4 artisan queue:restart
+sudo -u opsifin_admin php8.4 artisan optimize:clear
+sudo -u opsifin_admin php8.4 artisan queue:restart
 ```
 
 ## 28. Final go-live checklist
@@ -854,7 +889,7 @@ sudo -u opsifin php8.4 artisan queue:restart
 
 - [ ] SSH, firewall, TLS, renewal, dan security update siap.
 - [ ] `APP_ENV=production`, `APP_DEBUG=false`.
-- [ ] `.env` permission `0640` (`opsifin:www-data`) atau lebih ketat bila user
+- [ ] `.env` permission `0640` (`opsifin_admin:www-data`) atau lebih ketat bila user
   PHP-FPM sama dengan app user, dan tidak berada di backup publik.
 - [ ] MySQL tidak terekspos internet.
 - [ ] database credential menggunakan user khusus.

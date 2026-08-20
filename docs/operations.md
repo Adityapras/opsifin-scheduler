@@ -8,8 +8,8 @@ berbeda dari template repository.
 Jalankan dari `/var/www/opsifin-scheduler`:
 
 ```bash
-sudo -u opsifin /usr/bin/php8.4 artisan schedule:list
-sudo -u opsifin /usr/bin/php8.4 artisan queue:failed
+sudo -u opsifin_admin /usr/bin/php8.4 artisan schedule:list
+sudo -u opsifin_admin /usr/bin/php8.4 artisan queue:failed
 sudo supervisorctl status opsifin-scheduler-worker:*
 sudo systemctl status cron apache2 php8.4-fpm mysql --no-pager
 ```
@@ -48,13 +48,13 @@ Jangan menyalin `.env`, Authorization header, atau secret client ke tiket.
 3. Pastikan database dapat diakses:
 
    ```bash
-   sudo -u opsifin /usr/bin/php8.4 artisan about --only=environment
+   sudo -u opsifin_admin /usr/bin/php8.4 artisan about --only=environment
    ```
 
 4. Restart worker secara graceful:
 
    ```bash
-   sudo -u opsifin /usr/bin/php8.4 artisan queue:restart
+   sudo -u opsifin_admin /usr/bin/php8.4 artisan queue:restart
    sudo supervisorctl status opsifin-scheduler-worker:*
    ```
 
@@ -73,7 +73,7 @@ menambah beban jika endpoint tujuan bermasalah.
 2. Jalankan entry point sekali sebagai user aplikasi:
 
    ```bash
-   sudo -u opsifin /usr/bin/php8.4 artisan schedule:run -v
+   sudo -u opsifin_admin /usr/bin/php8.4 artisan schedule:run -v
    ```
 
 3. Periksa apakah client, template, dan schedule aktif.
@@ -113,8 +113,8 @@ tetap benar saat worker lebih dari satu.
 ## 7. Login admin bermasalah
 
 ```bash
-sudo -u opsifin /usr/bin/php8.4 artisan optimize:clear
-sudo -u opsifin /usr/bin/php8.4 artisan route:list --path=admin
+sudo -u opsifin_admin /usr/bin/php8.4 artisan optimize:clear
+sudo -u opsifin_admin /usr/bin/php8.4 artisan route:list --path=admin
 sudo apache2ctl configtest
 sudo tail -n 100 /var/log/apache2/opsifin-scheduler.error.log
 sudo tail -n 100 /var/www/opsifin-scheduler/storage/logs/laravel.log
@@ -128,13 +128,13 @@ session/cache dapat ditulis, dan URL diakses memakai domain yang sama dengan
 ## 8. Deploy aplikasi
 
 ```bash
-sudo -u opsifin git pull --ff-only
-sudo -u opsifin composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
-sudo -u opsifin npm ci
-sudo -u opsifin npm run build
-sudo -u opsifin /usr/bin/php8.4 artisan migrate --force
-sudo -u opsifin /usr/bin/php8.4 artisan optimize
-sudo -u opsifin /usr/bin/php8.4 artisan queue:restart
+sudo -u opsifin_admin git pull --ff-only
+sudo -u opsifin_admin composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+sudo -u opsifin_admin npm ci
+sudo -u opsifin_admin npm run build
+sudo -u opsifin_admin /usr/bin/php8.4 artisan migrate --force
+sudo -u opsifin_admin /usr/bin/php8.4 artisan optimize
+sudo -u opsifin_admin /usr/bin/php8.4 artisan queue:restart
 sudo systemctl reload php8.4-fpm
 sudo apache2ctl configtest
 sudo systemctl reload apache2
@@ -148,7 +148,7 @@ Selalu backup database sebelum migration production.
 Preview retensi:
 
 ```bash
-sudo -u opsifin /usr/bin/php8.4 artisan cron:purge-runs --dry-run
+sudo -u opsifin_admin /usr/bin/php8.4 artisan cron:purge-runs --dry-run
 ```
 
 Scheduler menjalankan purge setiap hari pukul 03:00. Queued dan running tidak
