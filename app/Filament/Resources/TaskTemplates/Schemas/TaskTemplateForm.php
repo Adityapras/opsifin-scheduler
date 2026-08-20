@@ -4,6 +4,7 @@ namespace App\Filament\Resources\TaskTemplates\Schemas;
 
 use App\Enums\ExecutorType;
 use App\Enums\HttpMethod;
+use Cron\CronExpression;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -55,6 +56,34 @@ class TaskTemplateForm
                         ->label('Additional headers')->keyLabel('Header')->valueLabel('Value')
                         ->helperText(new HtmlString('Use <code>{{client.secret_key}}</code> for the client secret key. Authorization is added automatically.'))
                         ->columnSpanFull(),
+                ]),
+
+            Section::make('Default schedule')
+                ->description('Controls how this service is assigned when a new client is created.')
+                ->columns(2)
+                ->schema([
+                    Toggle::make('auto_assign_to_new_clients')
+                        ->label('Assign to new clients')
+                        ->helperText('Creates one paused schedule for this service during client setup.')
+                        ->default(true),
+                    Toggle::make('default_schedule_enabled')
+                        ->label('Enable immediately')
+                        ->helperText('Keep this off so credentials and request previews can be reviewed first.')
+                        ->default(false),
+                    TextInput::make('default_cron_expression')
+                        ->label('Default cron expression')
+                        ->helperText('Applied to newly provisioned clients. Existing schedules are not changed.')
+                        ->default('*/5 * * * *')
+                        ->required()
+                        ->rule(fn () => function (string $attribute, mixed $value, \Closure $fail): void {
+                            if (! CronExpression::isValidExpression((string) $value)) {
+                                $fail('The default cron expression is not valid.');
+                            }
+                        }),
+                    Toggle::make('default_prevent_overlap')
+                        ->label('Prevent overlapping runs')
+                        ->helperText('Skip a new occurrence while the previous run is still active.')
+                        ->default(true),
                 ]),
 
             Section::make('Timeouts')

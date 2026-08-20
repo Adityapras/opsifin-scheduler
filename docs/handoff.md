@@ -297,3 +297,60 @@ Prompt deployment berikutnya:
 > jangan re-import legacy. Jangan menyalakan cron/worker target sebelum restore,
 > migration, count reconciliation, credential check, dan smoke test read-only
 > lulus.
+
+## Memory update — default schedules and admin UI release (20 Agustus 2026)
+
+Scope release yang masih berada di working tree lokal:
+
+1. Client baru dapat dibuat bersama default schedule untuk seluruh Task Template
+   aktif yang mengaktifkan `auto_assign_to_new_clients`. Provisioning bersifat
+   idempotent dan dapat dijalankan ulang melalui bulk action Client.
+2. Task Template menyimpan default cron, status enabled, dan kebijakan overlap.
+   Migration release adalah
+   `2026_08_20_000001_add_default_schedule_policy_to_task_templates.php`.
+3. Queue tetap `database/default`; jangan menggantinya menjadi file, Redis,
+   Horizon, atau Predis pada release ini.
+4. Filament memakai logo lokal `public/images/brand/opsifin-logo.png`. File
+   tersebut disalin dari
+   `https://qa2.fin-svc-barto.net/assets/image/rsp_inv_new.png` dengan SHA-256
+   `5b0f73d9379fed537241789dc232a7c10641380cca197d24b9c670ed6a6a9b3c`.
+5. Appearance memakai satu custom switcher pada topbar/login. Mode
+   `Light/Dark/Auto` disimpan pada localStorage key `theme`; palette
+   `Opsifin/Ocean/Forest/Sunset` disimpan pada key `opsifin-palette`. Theme
+   switcher bawaan di user menu dimatikan untuk menghindari kontrol duplikat.
+6. Keputusan visual setelah review screenshot `jelek.jpg` dan `jelek2.jpg`:
+   sidebar `18rem`, dark-blue gradient yang restrained, satu bahasa warna ikon,
+   topbar terang dengan aksen Opsifin, logo compact, dan appearance popover
+   collision-safe serta responsif. Jangan mengembalikan sidebar rainbow,
+   gradient cokelat, topbar oranye solid, atau mode selector icon-only.
+7. Password reset Filament aktif. Notifikasi reset hanya dikirim untuk User
+   aktif dan menggunakan mail/queue yang dikonfigurasi environment.
+
+Verifikasi release lokal terakhir:
+
+```text
+PHPUnit full suite   82 passed, 284 assertions
+Laravel Pint        passed
+Blade view cache    passed
+Vite build          passed
+git diff --check    passed
+Branch              master
+Remote              git@github.com:Adityapras/opsifin-crontab.git
+```
+
+Target update development server yang disebutkan user:
+
+```text
+URL          https://opsigolite-dev-backend.fin-svc-barto.net
+Project path /var/www/html/php84/opsifin-scheduler
+SSH user     opsifin_admin
+Web server   Apache2 behind Google Load Balancer
+```
+
+Sebelum update server: buat commit release dan push `master`, backup database,
+pastikan working tree server bersih, lalu gunakan maintenance mode karena kode
+baru membaca kolom dari migration baru. Pertahankan `/up` untuk health check dan
+jangan mengubah Google Load Balancer. Sesudah pull, jalankan Composer install,
+Vite production build, migration, Laravel optimize, graceful queue restart,
+kemudian smoke test `/up`, `/admin/login`, login, appearance switcher, create
+Client default schedules, dan forgot-password.

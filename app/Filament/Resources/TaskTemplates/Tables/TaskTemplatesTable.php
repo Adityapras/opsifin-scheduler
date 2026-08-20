@@ -31,13 +31,23 @@ class TaskTemplatesTable
                     ->description(fn (TaskTemplate $record) => $record->name),
                 TextColumn::make('config.method')->label('Method')->badge()->color('info'),
                 TextColumn::make('config.path')->label('Endpoint path')->fontFamily('mono')->searchable()->copyable()->limit(52),
+                TextColumn::make('default_cron_expression')
+                    ->label('Default timing')
+                    ->fontFamily('mono')
+                    ->description(fn (TaskTemplate $record) => $record->auto_assign_to_new_clients ? 'Auto-assign' : 'Manual assignment'),
                 TextColumn::make('timeout_sec')->label('Timeout')->suffix(' sec')->alignEnd()->sortable(),
                 TextColumn::make('schedules_count')->label('Assignments')->counts('schedules')->alignEnd()->sortable(),
+                IconColumn::make('auto_assign_to_new_clients')
+                    ->label('New clients')
+                    ->boolean()
+                    ->trueColor('primary')
+                    ->falseIcon('heroicon-o-minus'),
                 IconColumn::make('needs_review')->label('Review')->boolean()->trueColor('warning')->falseIcon('heroicon-o-minus'),
                 IconColumn::make('is_active')->label('Active')->boolean(),
             ])
             ->filters([
                 TernaryFilter::make('is_active'),
+                TernaryFilter::make('auto_assign_to_new_clients')->label('Auto-assign to new clients'),
                 TernaryFilter::make('needs_review'),
             ])
             ->recordActions([
@@ -91,7 +101,9 @@ class TaskTemplatesTable
     {
         return [
             TextInput::make('cron_expression')
-                ->label('Cron expression')->default('*/5 * * * *')->required()
+                ->label('Cron expression')
+                ->default(fn (?TaskTemplate $record): string => $record?->default_cron_expression ?: '*/5 * * * *')
+                ->required()
                 ->rule(fn () => function (string $attribute, mixed $value, \Closure $fail): void {
                     if (! CronExpression::isValidExpression((string) $value)) {
                         $fail('The cron expression is not valid.');
@@ -103,7 +115,7 @@ class TaskTemplatesTable
             Toggle::make('is_enabled')
                 ->label('Enable new assignments immediately')
                 ->helperText('Keep this off during import and cutover preparation.')
-                ->default(false),
+                ->default(fn (?TaskTemplate $record): bool => (bool) ($record?->default_schedule_enabled ?? false)),
         ];
     }
 }

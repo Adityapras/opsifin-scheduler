@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Clients\Tables;
 
 use App\Models\Client;
 use App\Services\ConnectionTester;
+use App\Services\Scheduling\DefaultScheduleProvisioner;
 use App\Services\Scheduling\ScheduleManager;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -108,6 +109,23 @@ class ClientsTable
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
+                    BulkAction::make('createMissingSchedules')
+                        ->label('Create missing schedules')
+                        ->icon('heroicon-o-squares-plus')
+                        ->color('primary')
+                        ->requiresConfirmation()
+                        ->modalDescription('Creates paused schedules for active services that are not assigned yet. Existing schedules are left unchanged.')
+                        ->authorize(fn () => auth()->user()->canManage())
+                        ->action(function (Collection $records, DefaultScheduleProvisioner $provisioner): void {
+                            $created = $records->sum(fn (Client $client): int => $provisioner->provision($client));
+
+                            Notification::make()
+                                ->title($created.' missing schedule(s) created')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+
                     BulkAction::make('activate')
                         ->label('Activate')
                         ->icon('heroicon-o-check')

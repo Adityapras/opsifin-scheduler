@@ -86,6 +86,17 @@ class ClientForm
                             ->columnSpanFull(),
                     ]),
 
+                Section::make('Schedule setup')
+                    ->description('Prepare this client with the default timing for every active service.')
+                    ->visibleOn('create')
+                    ->schema([
+                        Toggle::make('provision_default_schedules')
+                            ->label('Create default schedules')
+                            ->helperText('Schedules are created paused by default. Review and resume them after testing the client connection.')
+                            ->default(true)
+                            ->dehydrated(false),
+                    ]),
+
                 Section::make('Review & notes')
                     ->columns(2)
                     ->schema([

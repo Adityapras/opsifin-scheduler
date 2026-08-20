@@ -14,6 +14,7 @@ use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Width;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -31,16 +32,35 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->brandName('Opsifin Scheduler')
+            ->brandLogo(fn (): string => asset('images/brand/opsifin-logo.png'))
+            ->darkModeBrandLogo(fn (): string => asset('images/brand/opsifin-logo.png'))
+            ->brandLogoHeight('2.15rem')
+            ->favicon(fn (): string => asset('images/brand/favicon.png'))
+            ->sidebarWidth('18rem')
             ->sidebarCollapsibleOnDesktop()
             ->maxContentWidth(Width::Full)
             ->login()
+            ->passwordReset()
+            ->themeSwitcher(false)
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn () => view('filament.components.appearance-init'),
+            )
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_END,
+                fn () => view('filament.components.appearance-switcher'),
+            )
+            ->renderHook(
+                PanelsRenderHook::SIMPLE_LAYOUT_START,
+                fn () => view('filament.components.appearance-switcher'),
+            )
             ->colors([
-                'danger' => Color::Rose,
+                'danger' => Color::hex('#F44336'),
                 'gray' => Color::Slate,
-                'info' => Color::Sky,
-                'primary' => Color::Indigo,
-                'success' => Color::Emerald,
-                'warning' => Color::Amber,
+                'info' => Color::hex('#00BCD4'),
+                'primary' => Color::hex('#2196F3'),
+                'success' => Color::hex('#4CAF50'),
+                'warning' => Color::hex('#FF9800'),
             ])
             ->databaseNotifications()
             ->databaseNotificationsPolling('60s')

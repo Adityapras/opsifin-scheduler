@@ -13,7 +13,10 @@ use App\Filament\Resources\Users\UserResource;
 use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\Run;
+use Filament\Auth\Notifications\ResetPassword as ResetPasswordNotification;
+use Filament\Auth\Pages\PasswordReset\RequestPasswordReset;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\CreatesSchedulerFixtures;
@@ -45,6 +48,22 @@ class AdminPanelTest extends TestCase
         $this->actingAs($this->user())->get($url)->assertSuccessful();
     }
 
+    public function test_authenticated_layout_exposes_the_appearance_switcher(): void
+    {
+        $this->actingAs($this->user())
+            ->get('/admin')
+            ->assertSuccessful()
+            ->assertSee('Appearance settings')
+            ->assertSee('Color palette')
+            ->assertSee('Opsifin')
+            ->assertSee('Ocean')
+            ->assertSee('Forest')
+            ->assertSee('Sunset')
+            ->assertSee('Light')
+            ->assertSee('Dark')
+            ->assertSee('Auto');
+    }
+
     public function test_login_password_is_hidden_by_default_and_livewire_is_loaded(): void
     {
         $response = $this->get('/admin/login')->assertSuccessful();
@@ -52,6 +71,42 @@ class AdminPanelTest extends TestCase
         $response->assertSee("x-bind:type=\"isPasswordRevealed ? 'text' : 'password'\"", false);
         $response->assertSee('autocomplete="current-password"', false);
         $response->assertSee('livewire.min.js', false);
+        $response->assertSee('images/brand/opsifin-logo.png', false);
+        $response->assertSee('Forgot password?');
+        $response->assertSee('opsifin-appearance-init', false);
+        $response->assertSee('Appearance settings');
+    }
+
+    public function test_password_reset_request_page_is_available(): void
+    {
+        $this->get('/admin/password-reset/request')->assertSuccessful();
+    }
+
+    public function test_active_user_can_request_a_password_reset_link(): void
+    {
+        Notification::fake();
+        $user = $this->user();
+
+        Livewire::test(RequestPasswordReset::class)
+            ->fillForm(['email' => $user->email])
+            ->call('request')
+            ->assertHasNoFormErrors();
+
+        Notification::assertSentTo($user, ResetPasswordNotification::class);
+    }
+
+    public function test_inactive_user_does_not_receive_a_password_reset_link(): void
+    {
+        Notification::fake();
+        $user = $this->user();
+        $user->update(['is_active' => false]);
+
+        Livewire::test(RequestPasswordReset::class)
+            ->fillForm(['email' => $user->email])
+            ->call('request')
+            ->assertHasNoFormErrors();
+
+        Notification::assertNothingSent();
     }
 
     public function test_removed_v2_pages_are_not_available(): void
