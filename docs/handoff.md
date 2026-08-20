@@ -325,11 +325,17 @@ Scope release yang masih berada di working tree lokal:
    gradient cokelat, topbar oranye solid, atau mode selector icon-only.
 7. Password reset Filament aktif. Notifikasi reset hanya dikirim untuk User
    aktif dan menggunakan mail/queue yang dikonfigurasi environment.
+8. Follow-up screenshot `jelek3.jpg` menemukan error Alpine
+   `Unexpected identifier 'setPalette'` dan overflow dari floating dropdown
+   Filament. Final implementation tidak memakai `x-filament::dropdown` atau
+   multi-statement `x-init`: state diinisialisasi melalui method Alpine `init()`
+   dan popover diposisikan absolut terhadap tombol dengan batas lebar/tinggi
+   viewport. Pertahankan struktur ini agar overflow kanan tidak kembali.
 
 Verifikasi release lokal terakhir:
 
 ```text
-PHPUnit full suite   82 passed, 284 assertions
+PHPUnit full suite   82 passed, 286 assertions
 Laravel Pint        passed
 Blade view cache    passed
 Vite build          passed

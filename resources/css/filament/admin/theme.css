@@ -142,6 +142,7 @@ html[data-opsifin-palette='sunset'] {
 }
 
 .opsifin-appearance-switcher {
+    position: relative;
     display: flex;
     flex: 0 0 auto;
     align-items: center;
@@ -180,9 +181,41 @@ html[data-opsifin-palette='sunset'] {
 }
 
 .opsifin-appearance-panel {
+    position: absolute;
+    z-index: 70;
+    top: calc(100% + 0.65rem);
+    inset-inline-end: 0;
     width: min(16.75rem, calc(100vw - 1.5rem));
+    max-width: calc(100vw - 1.5rem);
+    max-height: calc(100dvh - 5.5rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    background: var(--surface-panel);
     padding: 0.75rem;
+    box-shadow: var(--shadow-modal);
     font-family: var(--font-primary);
+    transform-origin: top right;
+}
+
+.opsifin-popover-enter,
+.opsifin-popover-leave {
+    transition:
+        opacity 150ms ease,
+        transform 150ms ease;
+}
+
+.opsifin-popover-enter-start,
+.opsifin-popover-leave-end {
+    opacity: 0;
+    transform: translateY(-0.35rem) scale(0.98);
+}
+
+.opsifin-popover-enter-end,
+.opsifin-popover-leave-start {
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }
 
 .opsifin-appearance-heading {
@@ -250,6 +283,8 @@ html[data-opsifin-palette='sunset'] {
 .opsifin-mode-control {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
     gap: 0.3rem;
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-md);
@@ -259,6 +294,7 @@ html[data-opsifin-palette='sunset'] {
 
 .opsifin-mode-option {
     display: grid;
+    min-width: 0;
     min-height: 3rem;
     place-items: center;
     gap: 0.2rem;
@@ -298,11 +334,14 @@ html[data-opsifin-palette='sunset'] {
 .opsifin-palette-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
     gap: 0.35rem;
 }
 
 .opsifin-palette-option {
     display: grid;
+    min-width: 0;
     grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: 0.45rem;
@@ -681,6 +720,11 @@ html[data-opsifin-palette='sunset'] {
 :where(.dark, .dark *) .opsifin-appearance-heading,
 :where(.dark, .dark *) .opsifin-palette-option {
     color: var(--text-on-dark);
+}
+
+:where(.dark, .dark *) .opsifin-appearance-panel {
+    border-color: color-mix(in srgb, var(--text-on-dark) 10%, transparent);
+    background: color-mix(in srgb, var(--surface-sidebar) 96%, var(--surface-panel));
 }
 
 :where(.dark, .dark *) .opsifin-appearance-heading-icon {

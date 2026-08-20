@@ -61,7 +61,9 @@ class AdminPanelTest extends TestCase
             ->assertSee('Sunset')
             ->assertSee('Light')
             ->assertSee('Dark')
-            ->assertSee('Auto');
+            ->assertSee('Auto')
+            ->assertSee('x-on:click.outside="open = false"', false)
+            ->assertSee('this.setPalette(document.documentElement.dataset.opsifinPalette', false);
     }
 
     public function test_login_password_is_hidden_by_default_and_livewire_is_loaded(): void
