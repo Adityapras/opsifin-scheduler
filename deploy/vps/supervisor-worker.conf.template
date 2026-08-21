@@ -1,9 +1,9 @@
-[program:opsifin-scheduler-worker]
-process_name=%(program_name)s_%(process_num)02d
+[program:opsifin-scheduler-horizon]
+process_name=%(program_name)s
 directory=/var/www/opsifin-scheduler
-command=/usr/bin/php8.4 artisan queue:work database --queue=default --sleep=1 --tries=1 --timeout=1900 --max-time=3600
+command=/usr/bin/php8.4 artisan horizon
 user=opsifin_admin
-numprocs=2
+numprocs=1
 autostart=true
 autorestart=true
 startsecs=3
@@ -11,6 +11,6 @@ stopasgroup=true
 killasgroup=true
 stopwaitsecs=2000
 redirect_stderr=true
-stdout_logfile=/var/log/opsifin-scheduler/worker.log
+stdout_logfile=/var/log/opsifin-scheduler/horizon.log
 stdout_logfile_maxbytes=20MB
 stdout_logfile_backups=10

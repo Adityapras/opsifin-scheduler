@@ -71,6 +71,12 @@ class AdminPanelProvider extends PanelProvider
                     ->sort(60)
                     ->url('/telescope', shouldOpenInNewTab: true)
                     ->visible(fn (): bool => auth()->user()?->isAdmin() ?? false),
+                NavigationItem::make('Horizon')
+                    ->group('System')
+                    ->icon('heroicon-o-queue-list')
+                    ->sort(61)
+                    ->url('/horizon', shouldOpenInNewTab: true)
+                    ->visible(fn (): bool => auth()->user()?->isAdmin() ?? false),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')

@@ -1,15 +1,15 @@
-[program:opsifin-scheduler-worker]
-process_name=%(program_name)s_%(process_num)02d
+[program:opsifin-scheduler-horizon]
+process_name=%(program_name)s
 directory=/home/aditya_prasetyo/project/opsifin-crontab
-command=/www/server/php/84/bin/php artisan queue:work database --queue=default --sleep=1 --tries=1 --timeout=1900 --max-time=3600
+command=/www/server/php/84/bin/php artisan horizon
 user=www
-numprocs=2
+numprocs=1
 autostart=true
 autorestart=true
 stopasgroup=true
 killasgroup=true
 stopwaitsecs=2000
 redirect_stderr=true
-stdout_logfile=/home/aditya_prasetyo/project/opsifin-crontab/storage/logs/supervisor-worker.log
+stdout_logfile=/home/aditya_prasetyo/project/opsifin-crontab/storage/logs/supervisor-horizon.log
 stdout_logfile_maxbytes=20MB
 stdout_logfile_backups=5

@@ -145,13 +145,13 @@ Lakukan dalam maintenance window:
 3. Cancel run yang masih `queued` melalui Execution logs bila memang tidak akan
    diteruskan.
 4. Aktifkan maintenance mode.
-5. Hentikan trigger scheduler dan queue worker.
+5. Hentikan trigger scheduler dan Horizon.
 
 Contoh VPS/systemd-Supervisor:
 
 ```bash
 php artisan down --retry=60
-sudo supervisorctl stop 'opsifin-scheduler-worker:*'
+sudo supervisorctl stop opsifin-scheduler-horizon
 sudo mv /etc/cron.d/opsifin-scheduler /etc/cron.d/opsifin-scheduler.disabled
 sudo systemctl reload cron
 ```
@@ -426,8 +426,11 @@ DB_PASSWORD=<secret-target>
 SESSION_DRIVER=database
 CACHE_STORE=database
 QUEUE_CONNECTION=database
-DB_QUEUE=default
-DB_QUEUE_RETRY_AFTER=2000
+REDIS_CLIENT=predis
+REDIS_QUEUE_CONNECTION=queue
+REDIS_QUEUE_DB=2
+REDIS_QUEUE_RETRY_AFTER=2000
+HORIZON_TIMEOUT=1900
 ```
 
 Generate key baru khusus target:
@@ -500,8 +503,8 @@ Setelah smoke test read-only lulus:
 ```bash
 sudo supervisorctl reread
 sudo supervisorctl update
-sudo supervisorctl start 'opsifin-scheduler-worker:*'
-sudo supervisorctl status 'opsifin-scheduler-worker:*'
+sudo supervisorctl start opsifin-scheduler-horizon
+sudo supervisorctl status opsifin-scheduler-horizon
 
 sudo mv /etc/cron.d/opsifin-scheduler.disabled /etc/cron.d/opsifin-scheduler
 sudo chmod 0644 /etc/cron.d/opsifin-scheduler

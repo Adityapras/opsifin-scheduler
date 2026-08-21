@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => env('QUEUE_CONNECTION', 'database'),
+    'default' => env('QUEUE_CONNECTION', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
@@ -68,10 +68,14 @@ return [
 
         'redis' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'queue'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
-            'block_for' => null,
+            // Must exceed Horizon's worker timeout so a slow HTTP request cannot
+            // be claimed by a second worker before the first one is terminated.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 2000),
+            'block_for' => (int) env('REDIS_QUEUE_BLOCK_FOR', 5),
+            // RunDispatcher publishes explicitly after its DB transaction commits,
+            // allowing the returned Redis job ID to be persisted for reconciliation.
             'after_commit' => false,
         ],
 

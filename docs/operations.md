@@ -10,8 +10,9 @@ Jalankan dari `/var/www/opsifin-scheduler`:
 ```bash
 sudo -u opsifin_admin /usr/bin/php8.4 artisan schedule:list
 sudo -u opsifin_admin /usr/bin/php8.4 artisan queue:failed
-sudo supervisorctl status opsifin-scheduler-worker:*
-sudo systemctl status cron apache2 php8.4-fpm mysql --no-pager
+sudo -u opsifin_admin /usr/bin/php8.4 artisan horizon:status
+sudo supervisorctl status opsifin-scheduler-horizon
+sudo systemctl status cron apache2 php8.4-fpm mysql redis-server --no-pager
 ```
 
 Di UI, periksa:
@@ -29,7 +30,7 @@ Di UI, periksa:
 | UI **Execution logs** | Status request: queued/running/succeeded/failed/skipped, HTTP status, duration, response, dan error |
 | UI **Audit history** | Perubahan konfigurasi client, job template, dan schedule oleh user |
 | `storage/logs/laravel.log` | Exception aplikasi/importer/executor |
-| `/var/log/opsifin-scheduler/worker.log` | Lifecycle queue worker |
+| `/var/log/opsifin-scheduler/horizon.log` | Lifecycle Horizon dan queue worker |
 | `/var/log/opsifin-scheduler/scheduler.log` | Output system cron dan dispatcher |
 | `/var/log/apache2/opsifin-scheduler.error.log` | Routing/PHP upstream error |
 | PHP-FPM journal/log | Fatal error dan worker FPM |
@@ -41,24 +42,27 @@ Jangan menyalin `.env`, Authorization header, atau secret client ke tiket.
 1. Pastikan worker `RUNNING`:
 
    ```bash
-   sudo supervisorctl status opsifin-scheduler-worker:*
+   sudo supervisorctl status opsifin-scheduler-horizon
+   sudo -u opsifin_admin /usr/bin/php8.4 artisan horizon:status
    ```
 
 2. Periksa log worker dan Laravel.
-3. Pastikan database dapat diakses:
+3. Pastikan Redis dan database dapat diakses:
 
    ```bash
+   redis-cli ping
    sudo -u opsifin_admin /usr/bin/php8.4 artisan about --only=environment
    ```
 
 4. Restart worker secara graceful:
 
    ```bash
-   sudo -u opsifin_admin /usr/bin/php8.4 artisan queue:restart
-   sudo supervisorctl status opsifin-scheduler-worker:*
+   sudo -u opsifin_admin /usr/bin/php8.4 artisan horizon:terminate
+   sudo supervisorctl status opsifin-scheduler-horizon
    ```
 
-Jangan menghapus tabel `jobs` untuk memperbaiki backlog. Pause schedule yang
+Jangan menjalankan `horizon:clear` untuk memperbaiki backlog tanpa memastikan
+seluruh payload memang boleh dibuang. Pause schedule yang
 menambah beban jika endpoint tujuan bermasalah.
 
 ## 4. Schedule tidak dispatch
@@ -134,7 +138,7 @@ sudo -u opsifin_admin npm ci
 sudo -u opsifin_admin npm run build
 sudo -u opsifin_admin /usr/bin/php8.4 artisan migrate --force
 sudo -u opsifin_admin /usr/bin/php8.4 artisan optimize
-sudo -u opsifin_admin /usr/bin/php8.4 artisan queue:restart
+sudo -u opsifin_admin /usr/bin/php8.4 artisan horizon:terminate
 sudo systemctl reload php8.4-fpm
 sudo apache2ctl configtest
 sudo systemctl reload apache2

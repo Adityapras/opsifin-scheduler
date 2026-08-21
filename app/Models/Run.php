@@ -21,7 +21,7 @@ class Run extends Model
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
             'execution_deadline_at' => 'datetime',
-            'queue_job_id' => 'integer',
+            'queue_job_id' => 'string',
         ];
     }
 

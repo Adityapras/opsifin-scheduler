@@ -1,8 +1,8 @@
 # Deployment Production ke VPS
 
 Panduan ini adalah runbook deployment production resmi Opsifin Scheduler tanpa
-aaPanel. Contoh memakai Ubuntu/Debian, Apache2, PHP 8.4-FPM, MySQL, Supervisor,
-dan system cron. Instalasi awal boleh memakai IP/forwarder; domain final contoh
+aaPanel. Contoh memakai Ubuntu/Debian, Apache2, PHP 8.4-FPM, MySQL, Redis,
+Supervisor, dan system cron. Instalasi awal boleh memakai IP/forwarder; domain final contoh
 adalah `scheduler.example.com`. Sesuaikan package, socket, path, serta kebijakan
 keamanan dengan standar organisasi.
 
@@ -20,11 +20,11 @@ Setelah seluruh langkah selesai:
   execution log, dan audit history sudah dipindah;
 - password/token Client terbaca langsung karena disimpan as-is dan sudah
   dikonversi sebelum dump;
-- dua database queue worker dikelola Supervisor;
+- Redis queue dan Laravel Horizon dikelola Supervisor;
 - satu system cron memanggil Laravel Scheduler setiap menit;
 - avatar user tersedia melalui `public/storage`;
-- Telescope tersedia di `/telescope` hanya untuk Administrator;
-- Apache2, application log, worker log, dan scheduler log ter-rotate;
+- Telescope tersedia di `/telescope` dan Horizon di `/horizon`, hanya untuk Administrator;
+- Apache2, application log, Horizon log, dan scheduler log ter-rotate;
 - backup, smoke test, rollback, dan PIC terdokumentasi.
 
 ## 2. Arsitektur production
@@ -37,10 +37,10 @@ User / HTTPS monitor
           |
           v
      PHP 8.4-FPM -------- Laravel / Filament -------- MySQL
-                              |                         ^
-                              | database queue          |
-                              v                         |
-                    Supervisor (2 workers) -------------+
+                              |
+                              | Redis queue
+                              v
+                   Redis <--- Horizon <--- Supervisor
                               |
                               v
                       HTTP endpoint Client
@@ -54,7 +54,6 @@ system cron (1 menit) -> artisan schedule:run
 Komponen yang **tidak** digunakan:
 
 - aaPanel di production;
-- Redis/Horizon;
 - cron Linux per Client/job;
 - automatic HTTP retry;
 - `cron:tick` dan `cron:watchdog` lama;
@@ -65,7 +64,7 @@ Komponen yang **tidak** digunakan:
 | Process | User yang disarankan |
 | --- | --- |
 | Deploy, Git, Composer, npm, Artisan | `opsifin_admin` |
-| Supervisor queue worker | `opsifin_admin` |
+| Supervisor Horizon | `opsifin_admin` |
 | System cron Laravel Scheduler | `opsifin_admin` |
 | Apache2 dan PHP-FPM | `www-data` |
 | MySQL daemon | user service OS bawaan |
@@ -111,6 +110,7 @@ Kebutuhan software:
 - PHP CLI/FPM 8.4 beserta extension `bcmath`, `curl`, `fileinfo`, `gd`, `intl`,
   `mbstring`, `mysql`, `openssl`, `tokenizer`, `xml`, dan `zip`;
 - MySQL yang kompatibel dengan source;
+- Redis server dengan AOF, listener privat, dan `maxmemory-policy noeviction`;
 - Composer 2;
 - Node/npm yang kompatibel dengan Vite 8;
 - Git, curl, unzip, cron, Supervisor, logrotate, dan CA certificates;
@@ -122,13 +122,18 @@ Contoh instalasi package dasar:
 ```bash
 sudo apt update
 sudo apt upgrade
-sudo apt install apache2 mysql-server supervisor cron git curl unzip ca-certificates logrotate
+sudo apt install apache2 mysql-server redis-server redis-tools supervisor cron git curl unzip ca-certificates logrotate
 sudo apt install php8.4-cli php8.4-fpm php8.4-bcmath php8.4-curl php8.4-gd \
   php8.4-intl php8.4-mbstring php8.4-mysql php8.4-xml php8.4-zip
 
 sudo a2enmod rewrite proxy proxy_fcgi setenvif headers ssl
 sudo systemctl restart apache2 php8.4-fpm
 ```
+
+Edit `/etc/redis/redis.conf` agar Redis hanya listen pada interface privat,
+memakai authentication/ACL, `appendonly yes`, `appendfsync everysec`, dan
+`maxmemory-policy noeviction`. Setelah itu restart Redis dan pastikan `redis-cli
+ping` menghasilkan `PONG`.
 
 Gunakan PHP-FPM, bukan `mod_php`. Bila server lama masih memakai
 `mpm_prefork`/`libapache2-mod-php`, rencanakan perpindahan ke `mpm_event` dan
@@ -152,6 +157,8 @@ sudo apache2ctl configtest
 sudo apache2ctl -M | grep -E 'headers|proxy_fcgi|rewrite|setenvif|ssl'
 mysqld --version
 supervisord --version
+redis-server --version
+redis-cli ping
 ```
 
 ## 6. Hardening awal VPS
@@ -172,12 +179,12 @@ Contoh pemeriksaan:
 ```bash
 timedatectl
 ss -lntup
-sudo systemctl status apache2 mysql supervisor cron php8.4-fpm --no-pager
+sudo systemctl status apache2 mysql redis-server supervisor cron php8.4-fpm --no-pager
 ```
 
 ## 7. Akses awal tanpa domain dan persiapan domain final
 
-Domain tidak diperlukan untuk menjalankan scheduler, database queue, worker,
+Domain tidak diperlukan untuk menjalankan scheduler, Redis queue, Horizon,
 atau request HTTP ke endpoint Client. Domain hanya menjadi alamat stabil untuk
 user yang membuka panel.
 
@@ -355,9 +362,26 @@ SESSION_SECURE_COOKIE=false
 TRUSTED_PROXIES=
 
 CACHE_STORE=database
-QUEUE_CONNECTION=database
-DB_QUEUE=default
-DB_QUEUE_RETRY_AFTER=2000
+QUEUE_CONNECTION=redis
+QUEUE_FAILED_DRIVER=database-uuids
+
+REDIS_CLIENT=predis
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=<redis-secret>
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_CACHE_DB=1
+REDIS_QUEUE_DB=2
+REDIS_QUEUE_CONNECTION=queue
+REDIS_QUEUE=default
+REDIS_QUEUE_RETRY_AFTER=2000
+REDIS_QUEUE_BLOCK_FOR=5
+
+HORIZON_NAME="Opsifin Scheduler Production"
+HORIZON_REDIS_CONNECTION=default
+HORIZON_MIN_PROCESSES=2
+HORIZON_MAX_PROCESSES=10
+HORIZON_TIMEOUT=1900
 
 FILESYSTEM_DISK=local
 
@@ -559,29 +583,30 @@ Perubahan hostname membuat session browser lama tidak berlaku pada hostname
 baru; user cukup login kembali. Scheduler dan worker tidak perlu dihentikan
 hanya karena alamat panel berubah.
 
-## 17. Supervisor database queue worker
+## 17. Supervisor Laravel Horizon
 
 Salin template:
 
 ```bash
 cd /var/www/opsifin-scheduler
 sudo cp deploy/vps/supervisor-worker.conf.template \
-  /etc/supervisor/conf.d/opsifin-scheduler-worker.conf
+  /etc/supervisor/conf.d/opsifin-scheduler-horizon.conf
 
 sudo supervisorctl reread
 sudo supervisorctl update
-sudo supervisorctl status 'opsifin-scheduler-worker:*'
+sudo supervisorctl status opsifin-scheduler-horizon
 ```
 
 Kontrak worker:
 
 ```text
-connection             database
+connection             redis
 queue                  default
-numprocs               2
+Supervisor processes   1 master Horizon
+Horizon workers        2 minimum, 10 maximum
 tries                  1
 worker timeout         1900 detik
-DB_QUEUE_RETRY_AFTER   2000 detik
+REDIS_QUEUE_RETRY_AFTER 2000 detik
 max-time               3600 detik
 stopwaitsecs           2000 detik
 ```
@@ -592,8 +617,8 @@ worker kedua saat worker pertama masih berjalan. Tidak ada automatic HTTP retry.
 Saat deployment kode berikutnya:
 
 ```bash
-sudo -u opsifin_admin php8.4 artisan queue:restart
-sudo supervisorctl status 'opsifin-scheduler-worker:*'
+sudo -u opsifin_admin php8.4 artisan horizon:terminate
+sudo supervisorctl status opsifin-scheduler-horizon
 ```
 
 ## 18. System cron Laravel Scheduler
@@ -640,7 +665,7 @@ Log map:
 | UI Audit history | perubahan konfigurasi user |
 | UI Telescope | request/job/exception teknis |
 | `storage/logs/laravel.log` | exception aplikasi |
-| `/var/log/opsifin-scheduler/worker.log` | lifecycle worker |
+| `/var/log/opsifin-scheduler/horizon.log` | lifecycle Horizon dan worker |
 | `/var/log/opsifin-scheduler/scheduler.log` | output system cron |
 | `/var/log/apache2/opsifin-scheduler.error.log` | error Apache2/PHP upstream |
 | PHP-FPM log/journal | error process FPM |
@@ -655,6 +680,7 @@ sudo -u opsifin_admin php8.4 artisan about --only=environment
 sudo -u opsifin_admin php8.4 artisan migrate:status
 sudo -u opsifin_admin php8.4 artisan route:list --path=admin
 sudo -u opsifin_admin php8.4 artisan route:list --path=telescope
+sudo -u opsifin_admin php8.4 artisan route:list --path=horizon
 sudo -u opsifin_admin php8.4 artisan schedule:list
 sudo -u opsifin_admin php8.4 artisan queue:failed
 OPSIFIN_APP_URL=http://10.10.20.15
@@ -675,15 +701,15 @@ UI smoke test read-only:
 7. gunakan filter periode di Execution logs;
 8. buka Audit history;
 9. buka User Management dan pastikan avatar tampil;
-10. buka Telescope sebagai Administrator dan pastikan role lain ditolak.
+10. buka Telescope dan Horizon sebagai Administrator dan pastikan role lain ditolak.
 
-## 21. Menyalakan worker dan scheduler
+## 21. Menyalakan Horizon dan scheduler
 
 Setelah validasi read-only lulus:
 
 ```bash
-sudo supervisorctl start 'opsifin-scheduler-worker:*'
-sudo supervisorctl status 'opsifin-scheduler-worker:*'
+sudo supervisorctl start opsifin-scheduler-horizon
+sudo supervisorctl status opsifin-scheduler-horizon
 sudo systemctl restart cron
 ```
 
@@ -695,7 +721,7 @@ Lakukan smoke execution:
 4. buka Execution logs;
 5. pastikan status bergerak `queued -> running -> succeeded/failed`;
 6. verifikasi HTTP status, duration, response excerpt, dan error;
-7. periksa worker log dan Laravel log;
+7. periksa Horizon dashboard, Horizon log, dan Laravel log;
 8. jangan mass-resume sebelum hasil disetujui.
 
 ## 22. Cutover dari runtime lama
@@ -716,12 +742,13 @@ bersamaan.
 ## 23. Health check pasca-go-live
 
 ```bash
-sudo systemctl status apache2 php8.4-fpm mysql cron supervisor --no-pager
-sudo supervisorctl status 'opsifin-scheduler-worker:*'
+sudo systemctl status apache2 php8.4-fpm mysql redis-server cron supervisor --no-pager
+sudo supervisorctl status opsifin-scheduler-horizon
+sudo -u opsifin_admin php8.4 artisan horizon:status
 sudo -u opsifin_admin php8.4 artisan schedule:list
 sudo -u opsifin_admin php8.4 artisan queue:failed
 sudo tail -n 100 /var/log/opsifin-scheduler/scheduler.log
-sudo tail -n 100 /var/log/opsifin-scheduler/worker.log
+sudo tail -n 100 /var/log/opsifin-scheduler/horizon.log
 sudo tail -n 100 /var/www/opsifin-scheduler/storage/logs/laravel.log
 ```
 
@@ -731,7 +758,7 @@ Pantau dari luar VPS:
 - certificate expiry;
 - CPU, RAM, disk, inode;
 - MySQL availability dan backup freshness;
-- worker process count;
+- status Redis, Horizon, dan worker process count;
 - umur queue tertua;
 - failure rate Execution logs;
 - tidak adanya schedule aktif tanpa `next_run_at`.
@@ -747,7 +774,7 @@ Urutan aman:
 5. install dependency dan build asset;
 6. jalankan migration;
 7. rebuild cache;
-8. restart worker graceful;
+8. terminate Horizon secara graceful agar Supervisor memuat release baru;
 9. reload PHP-FPM/Apache2 bila perlu;
 10. jalankan smoke test;
 11. catat commit, migration, dan hasil validasi.
@@ -763,7 +790,7 @@ sudo -u opsifin_admin npm ci
 sudo -u opsifin_admin npm run build
 sudo -u opsifin_admin php8.4 artisan migrate --force
 sudo -u opsifin_admin php8.4 artisan optimize
-sudo -u opsifin_admin php8.4 artisan queue:restart
+sudo -u opsifin_admin php8.4 artisan horizon:terminate
 sudo systemctl reload php8.4-fpm
 sudo apache2ctl configtest
 sudo systemctl reload apache2
@@ -774,12 +801,12 @@ Gunakan `artisan down` bila perubahan schema/asset tidak backward compatible.
 ## 25. Rollback release
 
 1. Pause Schedule berisiko jika eksekusi harus berhenti.
-2. Hentikan worker bila payload tidak kompatibel dengan kode lama.
+2. Hentikan Horizon bila payload tidak kompatibel dengan kode lama.
 3. Checkout tag/commit sebelumnya.
 4. Jalankan Composer/npm sesuai lock file release lama.
 5. Restore database hanya jika migration tidak backward compatible dan backup
    sudah diverifikasi.
-6. Jalankan `optimize:clear`, `optimize`, lalu `queue:restart`.
+6. Jalankan `optimize:clear`, `optimize`, lalu `horizon:terminate`.
 7. Reload service dan smoke test.
 
 Jangan otomatis memakai `migrate:rollback`. Beberapa migration tidak dirancang
@@ -853,9 +880,10 @@ dipulihkan tanpa key yang mengenkripsinya.
 ### Run tertahan di queued
 
 ```bash
-sudo supervisorctl status 'opsifin-scheduler-worker:*'
+sudo supervisorctl status opsifin-scheduler-horizon
+sudo -u opsifin_admin php8.4 artisan horizon:status
 sudo -u opsifin_admin php8.4 artisan queue:failed
-sudo tail -n 100 /var/log/opsifin-scheduler/worker.log
+sudo tail -n 100 /var/log/opsifin-scheduler/horizon.log
 ```
 
 ### Schedule tidak dispatch
@@ -876,11 +904,11 @@ sudo -u opsifin_admin php8.4 artisan storage:link
 
 ### Telescope tidak merekam request baru
 
-Clear config cache dan restart long-running queue workers:
+Clear config cache dan restart Horizon:
 
 ```bash
 sudo -u opsifin_admin php8.4 artisan optimize:clear
-sudo -u opsifin_admin php8.4 artisan queue:restart
+sudo -u opsifin_admin php8.4 artisan horizon:terminate
 ```
 
 ## 28. Final go-live checklist

@@ -14,7 +14,9 @@ Path standar repository:
 - WSL2 Ubuntu;
 - aaPanel Nginx, PHP 8.4, dan MySQL;
 - PHP CLI `/www/server/php/84/bin/php`;
-- database queue;
+- Redis server dengan persistence AOF;
+- Predis sebagai client Redis PHP;
+- Laravel Horizon;
 - Supervisor aaPanel;
 - satu aaPanel Cron task untuk Laravel Scheduler;
 - host lokal `opsifin-cron.local`.
@@ -37,7 +39,12 @@ npm --version
 ```
 
 Extension minimum: curl, fileinfo, intl, mbstring, openssl, pdo_mysql,
-bcmath, dan xml.
+bcmath, pcntl, posix, dan xml. Predis tidak membutuhkan extension `phpredis`,
+tetapi Redis server tetap wajib terpasang dan berjalan.
+
+Pasang Redis server melalui aaPanel App Store atau package OS. Untuk Redis lokal,
+batasi listener ke loopback, aktifkan AOF (`appendonly yes`, `appendfsync everysec`),
+dan gunakan `maxmemory-policy noeviction`.
 
 ## 3. Install dependency
 
@@ -71,9 +78,16 @@ DB_PASSWORD=<local-secret>
 
 SESSION_DRIVER=database
 CACHE_STORE=database
-QUEUE_CONNECTION=database
-DB_QUEUE=default
-DB_QUEUE_RETRY_AFTER=2000
+QUEUE_CONNECTION=redis
+REDIS_CLIENT=predis
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_QUEUE_CONNECTION=queue
+REDIS_QUEUE_DB=2
+REDIS_QUEUE_RETRY_AFTER=2000
+HORIZON_MIN_PROCESSES=2
+HORIZON_MAX_PROCESSES=10
+HORIZON_TIMEOUT=1900
 ```
 
 Jangan mengirim isi `.env` atau password database ke chat/log.
@@ -209,21 +223,22 @@ default. Jika input tampil seperti text atau submit tidak bekerja:
 Masalah tersebut biasanya routing asset Livewire, bukan tipe field password di
 source form.
 
-## 11. Supervisor worker
+## 11. Supervisor Horizon
 
 Gunakan fitur Supervisor aaPanel atau template
 `deploy/aapanel/supervisor-worker.conf.template`:
 
 ```text
 directory=/home/aditya_prasetyo/project/opsifin-crontab
-command=/www/server/php/84/bin/php artisan queue:work database --queue=default --sleep=1 --tries=1 --timeout=1900 --max-time=3600
+command=/www/server/php/84/bin/php artisan horizon
 user=www
-numprocs=2
+numprocs=1
 stopwaitsecs=2000
 ```
 
 Sesudah config berubah, reread/update melalui aaPanel atau supervisorctl.
-Pastikan kedua process berstatus RUNNING.
+Pastikan satu process master Horizon berstatus RUNNING; Horizon mengelola jumlah
+worker berdasarkan `HORIZON_MIN_PROCESSES` dan `HORIZON_MAX_PROCESSES`.
 
 ## 12. aaPanel Cron
 
@@ -237,6 +252,7 @@ Jangan membuat cron Linux/aaPanel per job. Laravel Scheduler menjalankan:
 
 - `jobs:dispatch-due` setiap menit;
 - `cron:purge-runs` setiap hari pukul 03:00.
+- `horizon:snapshot` setiap lima menit.
 
 Verifikasi:
 

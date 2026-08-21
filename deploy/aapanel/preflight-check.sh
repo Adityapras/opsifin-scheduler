@@ -74,6 +74,18 @@ else
     fail "Supervisor service is not running"
 fi
 
+if command -v redis-cli >/dev/null 2>&1 && redis-cli ping 2>/dev/null | grep -q '^PONG$'; then
+    pass "Redis server responds to PING"
+else
+    fail "Redis server is not installed, not running, or not reachable"
+fi
+
+if "$PHP_BIN" "$PROJECT_DIR/artisan" list --raw 2>/dev/null | grep -q '^horizon$'; then
+    pass "Laravel Horizon is installed"
+else
+    fail "Laravel Horizon command is unavailable"
+fi
+
 if ss -ltn 2>/dev/null | grep -qE ':80\s'; then
     pass "a service is listening on port 80"
 else

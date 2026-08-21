@@ -9,7 +9,7 @@ kebutuhan URL/job, cron, queue, status eksekusi, pause/resume, dan retry manual.
 | --- | --- |
 | Clock | Satu system cron menjalankan `artisan schedule:run` setiap menit |
 | Jadwal dinamis | Dispatcher membaca `schedules.next_run_at` dari database |
-| Eksekusi | Database queue dengan Supervisor |
+| Eksekusi | Redis queue dengan Laravel Horizon yang dijaga Supervisor |
 | Retry | Satu HTTP attempt; retry hanya manual dari UI |
 | Downtime | Maksimal satu occurrence terbaru, tanpa replay backlog |
 | Overlap | Satu running slot per schedule; occurrence lain menjadi skipped |
@@ -34,10 +34,10 @@ DueScheduleDispatcher
   query due → row lock → create Run → advance next_run_at
               │
               ▼
-database jobs queue
+Redis queue
               │
               ▼
-Supervisor → ExecuteRun → RunWorker → HttpExecutor
+Supervisor → Horizon → ExecuteRun → RunWorker → HttpExecutor
               │
               ▼
 endpoint client → succeeded / failed
@@ -127,8 +127,8 @@ Setiap menit:
 4. hitung occurrence cron terbaru yang tidak melebihi waktu sekarang;
 5. hitung `next_run_at` berikutnya dari waktu sekarang;
 6. bila `prevent_overlap` aktif, buat Run skipped jika running slot masih dipakai;
-7. selain itu buat Run queued dan payload database queue;
-8. commit transaction.
+7. selain itu buat Run queued;
+8. commit transaction, lalu publish payload ke Redis.
 
 `materialization_key` unik mencegah occurrence yang sama dibuat dua kali.
 
@@ -176,10 +176,15 @@ lama tidak diubah diam-diam. Assignment baru default paused.
 
 ```text
 task timeout <= worker --timeout (1900)
-worker --timeout < DB_QUEUE_RETRY_AFTER (2000)
+worker --timeout < REDIS_QUEUE_RETRY_AFTER (2000)
 Supervisor stopwaitsecs >= 2000
 worker --tries=1
 ```
+
+`RunDispatcher` mem-publish Redis secara eksplisit setelah transaction pembentukan
+Run selesai. `jobs:reconcile-queued` memulihkan Run yang sudah commit tetapi belum
+sempat mendapat payload Redis. Redis wajib memakai persistence AOF dan
+`maxmemory-policy noeviction` agar payload queue tidak dieviction.
 
 ## Security boundary
 

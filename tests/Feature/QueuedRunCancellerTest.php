@@ -46,6 +46,19 @@ class QueuedRunCancellerTest extends TestCase
         $this->assertSame(RunStatus::Cancelled, $run->fresh()->status);
     }
 
+    public function test_queued_run_without_a_payload_id_is_reconciled(): void
+    {
+        $run = $this->occurrence($this->schedule(), [
+            'queued_at' => now()->subMinutes(2),
+            'queue_job_id' => null,
+        ]);
+
+        $this->artisan('jobs:reconcile-queued')->assertSuccessful();
+
+        $this->assertNotNull($run->fresh()->queue_job_id);
+        $this->assertDatabaseHas('jobs', ['id' => $run->fresh()->queue_job_id]);
+    }
+
     public function test_running_run_cannot_be_cancelled(): void
     {
         $run = $this->occurrence($this->schedule(), ['status' => RunStatus::Running]);

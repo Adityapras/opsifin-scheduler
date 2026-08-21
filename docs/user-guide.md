@@ -511,7 +511,7 @@ Semua role aktif boleh Inspect karena aksi ini read-only.
 1. Pastikan Client dan Template aktif.
 2. Pilih **Run now**.
 3. Konfirmasi.
-4. Sistem membuat Run trigger `manual` dan memasukkannya ke database queue.
+4. Sistem membuat Run trigger `manual` dan memasukkannya ke Redis queue.
 5. Pantau Execution logs.
 
 Run now dapat dipakai ketika Schedule paused. Aksi ini tetap menghormati master
@@ -766,7 +766,7 @@ Operator:
 3. pause Schedule penyumbang backlog bila endpoint bermasalah;
 4. hubungi PIC server untuk memeriksa Supervisor worker.
 
-PIC server memeriksa `supervisorctl`, worker log, database, dan
+PIC server memeriksa Horizon, `supervisorctl`, Redis, database, dan
 `storage/logs/laravel.log`.
 
 ## 21. Run stuck di running
@@ -794,7 +794,7 @@ berakhir atau dipindahkan ke sistem audit eksternal.
 - tidak menghentikan request yang sudah running saat Schedule dipause;
 - tidak menjalankan lebih dari satu attempt dalam satu Run;
 - tidak membuat cron Linux per job;
-- tidak menggunakan Redis/Horizon;
+- menggunakan Redis queue dan Horizon; dashboard Horizon hanya untuk Administrator;
 - tidak menjadi external uptime monitor VPS;
 - tidak otomatis menentukan bahwa semua active template wajib untuk semua
   Client;

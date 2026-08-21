@@ -38,9 +38,14 @@ class DueScheduleDispatcher
 
         foreach ($ids as $id) {
             try {
-                $result = DB::transaction(fn () => $this->dispatchSchedule((int) $id, $at));
-                $queued += $result === RunStatus::Queued ? 1 : 0;
-                $skipped += $result === RunStatus::Skipped ? 1 : 0;
+                $run = DB::transaction(fn () => $this->dispatchSchedule((int) $id, $at));
+
+                if ($run?->status === RunStatus::Queued && $run->wasRecentlyCreated) {
+                    $this->runs->enqueue($run);
+                    $queued++;
+                }
+
+                $skipped += $run?->status === RunStatus::Skipped ? 1 : 0;
             } catch (Throwable $exception) {
                 $errors[] = 'schedule '.$id.': '.Str::limit($exception->getMessage(), 500);
                 report($exception);
@@ -50,7 +55,7 @@ class DueScheduleDispatcher
         return compact('queued', 'skipped', 'recovered', 'errors') + ['scanned' => $ids->count()];
     }
 
-    private function dispatchSchedule(int $scheduleId, Carbon $at): ?RunStatus
+    private function dispatchSchedule(int $scheduleId, Carbon $at): ?Run
     {
         $schedule = Schedule::query()
             ->with(['client', 'taskTemplate'])
@@ -69,23 +74,19 @@ class DueScheduleDispatcher
             && Run::query()->whereKey($schedule->running_run_id)->where('status', RunStatus::Running->value)->exists();
 
         if ($slotBusy) {
-            $this->runs->materialize(
+            return $this->runs->materialize(
                 $schedule,
                 $scheduledFor,
                 status: RunStatus::Skipped,
                 skipReason: 'Previous run is still running.',
             );
-
-            return RunStatus::Skipped;
         }
 
         if ($schedule->prevent_overlap && $schedule->running_run_id !== null) {
             $schedule->forceFill(['running_run_id' => null])->save();
         }
 
-        $run = $this->runs->materialize($schedule, $scheduledFor);
-
-        return $run->wasRecentlyCreated ? RunStatus::Queued : null;
+        return $this->runs->materialize($schedule, $scheduledFor);
     }
 
     private function recoverExpiredRuns(Carbon $at): int

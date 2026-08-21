@@ -48,13 +48,27 @@ class RunDispatcher
             'error_message' => $status === RunStatus::Skipped ? $skipReason : null,
         ])->save();
 
-        if ($status === RunStatus::Queued) {
-            $queueJobId = Queue::connection('database')->pushOn(
-                $schedule->queue,
-                new ExecuteRun($run->id),
-            );
+        return $run;
+    }
 
-            $run->forceFill(['queue_job_id' => $queueJobId])->saveQuietly();
+    public function enqueue(Run $run, ?string $queueName = null): Run
+    {
+        $run->refresh();
+
+        if ($run->status !== RunStatus::Queued || $run->queue_job_id !== null) {
+            return $run;
+        }
+
+        $run->loadMissing('schedule');
+        $connection = (string) config('queue.default');
+        $queueName ??= $run->schedule?->queue ?? config("queue.connections.{$connection}.queue", 'default');
+        $queueJobId = Queue::connection($connection)->pushOn(
+            $queueName,
+            new ExecuteRun($run->id),
+        );
+
+        if ($queueJobId !== null) {
+            $run->forceFill(['queue_job_id' => (string) $queueJobId])->saveQuietly();
         }
 
         return $run;
@@ -62,7 +76,9 @@ class RunDispatcher
 
     public function manual(Schedule $schedule): Run
     {
-        return DB::transaction(fn () => $this->materialize($schedule, now(), RunTrigger::Manual));
+        $run = DB::transaction(fn () => $this->materialize($schedule, now(), RunTrigger::Manual));
+
+        return $this->enqueue($run, $schedule->queue);
     }
 
     public function retry(Run $source): Run
@@ -73,6 +89,8 @@ class RunDispatcher
 
         $schedule = $source->schedule()->firstOrFail();
 
-        return DB::transaction(fn () => $this->materialize($schedule, now(), RunTrigger::Retry, RunStatus::Queued, $source));
+        $run = DB::transaction(fn () => $this->materialize($schedule, now(), RunTrigger::Retry, RunStatus::Queued, $source));
+
+        return $this->enqueue($run, $schedule->queue);
     }
 }

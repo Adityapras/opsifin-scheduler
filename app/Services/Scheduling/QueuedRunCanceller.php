@@ -6,7 +6,9 @@ use App\Enums\RunStatus;
 use App\Jobs\ExecuteRun;
 use App\Models\AuditLog;
 use App\Models\Run;
+use Illuminate\Queue\RedisQueue;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use InvalidArgumentException;
 
 class QueuedRunCanceller
@@ -20,15 +22,7 @@ class QueuedRunCanceller
                 throw new InvalidArgumentException('Only a queued run can be cancelled.');
             }
 
-            $queueJobIds = $lockedRun->queue_job_id === null
-                ? $this->findLegacyQueueJobIds($lockedRun)
-                : [(int) $lockedRun->queue_job_id];
-
-            if ($queueJobIds !== []) {
-                DB::table(config('queue.connections.database.table', 'jobs'))
-                    ->whereIn('id', $queueJobIds)
-                    ->delete();
-            }
+            $queueJobIds = $this->removeQueuePayloads($lockedRun);
 
             $before = ['status' => $lockedRun->status->value];
             $lockedRun->forceFill([
@@ -46,6 +40,81 @@ class QueuedRunCanceller
 
             return $lockedRun;
         });
+    }
+
+    /** @return array<int, int|string> */
+    private function removeQueuePayloads(Run $run): array
+    {
+        $connectionName = (string) config('queue.default');
+        $driver = config("queue.connections.{$connectionName}.driver");
+
+        if ($driver === 'redis') {
+            $removed = $this->removeRedisQueuePayloads($run, $connectionName);
+
+            // A queued run created before the Redis cutover can still reference
+            // an old database payload. Remove it while the legacy table exists.
+            if ($run->queue_job_id !== null && ctype_digit($run->queue_job_id)) {
+                $removed = array_merge(
+                    $removed,
+                    $this->removeDatabaseQueuePayloads([(int) $run->queue_job_id]),
+                );
+            }
+
+            return array_values($removed);
+        }
+
+        if ($driver === 'database') {
+            $ids = $run->queue_job_id === null
+                ? $this->findLegacyQueueJobIds($run)
+                : [(int) $run->queue_job_id];
+
+            return $this->removeDatabaseQueuePayloads($ids);
+        }
+
+        throw new InvalidArgumentException("Queued run cancellation is not supported for [{$driver}] queues.");
+    }
+
+    /** @return array<int, int> */
+    private function removeDatabaseQueuePayloads(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        DB::table(config('queue.connections.database.table', 'jobs'))
+            ->whereIn('id', $ids)
+            ->delete();
+
+        return $ids;
+    }
+
+    /** @return array<int, string> */
+    private function removeRedisQueuePayloads(Run $run, string $connectionName): array
+    {
+        $queue = Queue::connection($connectionName);
+
+        if (! $queue instanceof RedisQueue) {
+            throw new InvalidArgumentException("Queue connection [{$connectionName}] is not a Redis queue.");
+        }
+
+        $queueName = $run->schedule?->queue ?? config("queue.connections.{$connectionName}.queue", 'default');
+        $redis = $queue->getConnection();
+        $queueKey = $queue->getQueue($queueName);
+        $removed = [];
+
+        foreach ($redis->lrange($queueKey, 0, -1) as $payload) {
+            if (! is_string($payload) || ! $this->payloadBelongsToRun($payload, $run->id)) {
+                continue;
+            }
+
+            if ((int) $redis->lrem($queueKey, 1, $payload) === 0) {
+                continue;
+            }
+
+            $removed[] = (string) (json_decode($payload, true)['id'] ?? 'run:'.$run->id);
+        }
+
+        return $removed;
     }
 
     /** @return array<int, int> */

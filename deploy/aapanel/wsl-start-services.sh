@@ -48,5 +48,11 @@ fi
 start_service nginx nginx
 start_service mysqld mysqld
 start_service php-fpm-84 php-fpm-84
+start_service redis-server redis-server
+
+if ! pgrep -x redis-server >/dev/null 2>&1; then
+    start_service redis redis
+fi
+
 start_service cron cron
 start_aapanel_supervisor
