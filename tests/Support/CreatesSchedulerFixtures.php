@@ -69,7 +69,7 @@ trait CreatesSchedulerFixtures
             'schedule_id' => $schedule->id,
             'client_id' => $schedule->client_id,
             'task_template_id' => $schedule->task_template_id,
-            'scheduled_for' => now()->utc()->startOfMinute(),
+            'scheduled_for' => now()->startOfMinute(),
             'trigger' => 'schedule',
             'status' => 'queued',
             'queued_at' => now(),

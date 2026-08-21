@@ -112,7 +112,7 @@ class Schedule extends Model
 
         return Carbon::instance((new CronExpression($this->cron_expression))
             ->getNextRunDate($after->copy()->setTimezone($timezone), 0, false, $timezone))
-            ->utc();
+            ->setTimezone(config('app.timezone'));
     }
 
     public function isRunnable(): bool

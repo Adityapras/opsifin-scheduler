@@ -20,7 +20,7 @@ class DueScheduleDispatcher
     /** @return array{scanned: int, queued: int, skipped: int, recovered: int, errors: array<int, string>} */
     public function dispatch(?Carbon $at = null): array
     {
-        $at = ($at ?? now())->copy()->utc()->startOfMinute();
+        $at = ($at ?? now())->copy()->setTimezone(config('app.timezone'))->startOfMinute();
         $recovered = $this->recoverExpiredRuns($at);
 
         $ids = Schedule::query()

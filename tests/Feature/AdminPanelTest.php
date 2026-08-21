@@ -200,11 +200,11 @@ class AdminPanelTest extends TestCase
     {
         $schedule = $this->schedule();
         $withinRange = $this->occurrence($schedule, [
-            'scheduled_for' => now()->utc()->startOfMinute(),
+            'scheduled_for' => now()->startOfMinute(),
             'status' => RunStatus::Succeeded,
         ]);
         $outsideRange = $this->occurrence($schedule, [
-            'scheduled_for' => now()->utc()->subDays(3)->startOfMinute(),
+            'scheduled_for' => now()->subDays(3)->startOfMinute(),
             'status' => RunStatus::Succeeded,
         ]);
 

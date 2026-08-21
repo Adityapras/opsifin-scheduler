@@ -40,7 +40,7 @@ class RunDispatcher
             'task_template_id' => $schedule->task_template_id,
             'source_run_id' => $source?->id,
             'materialization_key' => $key,
-            'scheduled_for' => $scheduledFor->copy()->utc(),
+            'scheduled_for' => $scheduledFor->copy()->setTimezone(config('app.timezone')),
             'trigger' => $trigger,
             'status' => $status,
             'queued_at' => $status === RunStatus::Queued ? now() : null,

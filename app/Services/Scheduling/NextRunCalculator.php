@@ -20,7 +20,7 @@ class NextRunCalculator
 
         return Carbon::instance((new CronExpression($schedule->cron_expression))
             ->getNextRunDate($after->copy()->setTimezone($timezone), 0, false, $timezone))
-            ->utc();
+            ->setTimezone(config('app.timezone'));
     }
 
     public function latestDue(Schedule $schedule, Carbon $at): Carbon
@@ -33,6 +33,6 @@ class NextRunCalculator
 
         return Carbon::instance((new CronExpression($schedule->cron_expression))
             ->getPreviousRunDate($at->copy()->setTimezone($timezone), 0, true, $timezone))
-            ->utc();
+            ->setTimezone(config('app.timezone'));
     }
 }
