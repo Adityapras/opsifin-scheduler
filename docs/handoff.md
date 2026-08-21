@@ -336,6 +336,12 @@ Scope release yang masih berada di working tree lokal:
    Final state factory berada di `appearance-init.blade.php` sebagai
    `window.opsifinAppearance(defaultTheme)`; atribut Blade hanya memanggil
    factory tersebut. Jangan memindahkan method/state kembali ke atribut HTML.
+   Render final yang wajib dipertahankan adalah
+   `x-data="opsifinAppearance('system')"`; `window.opsifinAppearance` harus
+   bertipe `function` di browser dan Console tidak boleh memuat
+   `palette is not defined`. Setiap update Blade ini wajib diikuti
+   `artisan optimize:clear` dan `artisan optimize` di server agar compiled view
+   lama tidak tetap digunakan.
 
 Verifikasi release lokal terakhir:
 
