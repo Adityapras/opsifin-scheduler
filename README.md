@@ -95,6 +95,7 @@ database berisi data wajib memakai `--fresh` setelah backup.
 
 ## Dokumentasi
 
+- [Artifact teknis end-to-end](docs/artifact-teknis-opsifin-scheduler.md)
 - [Arsitektur dan flow teknis](docs/architecture.md)
 - [User guide](docs/user-guide.md)
 - [Development WSL + aaPanel](docs/installation.md)
