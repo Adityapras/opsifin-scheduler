@@ -16,7 +16,7 @@ class RunInfolist
     {
         return $schema->components([
             Section::make('Execution')
-                ->description('One queued HTTP execution. Failed executions may be retried manually.')
+                ->description('One HTTP occurrence. Use Run Now on its schedule to create a new execution.')
                 ->columns(4)
                 ->schema([
                     TextEntry::make('client.code')->label('Client')->placeholder('Deleted'),
@@ -27,12 +27,13 @@ class RunInfolist
                     TextEntry::make('trigger')->badge()->color('gray')
                         ->formatStateUsing(fn (RunTrigger $state) => $state->label()),
                     TextEntry::make('scheduled_for')->label('Scheduled for')->dateTime('d M Y H:i:s')->timezone(config('opsifin_cron.default_timezone')),
-                    TextEntry::make('queued_at')->label('Queued')->dateTime('d M Y H:i:s')->timezone(config('opsifin_cron.default_timezone'))->placeholder('—'),
+                    TextEntry::make('prepared_at')->label('Prepared')->dateTime('d M Y H:i:s')->timezone(config('opsifin_cron.default_timezone'))->placeholder('—'),
+                    TextEntry::make('start_lag_ms')->label('Start lag')->suffix(' ms')->placeholder('—'),
                     TextEntry::make('started_at')->label('Started')->dateTime('d M Y H:i:s')->timezone(config('opsifin_cron.default_timezone'))->placeholder('—'),
                     TextEntry::make('finished_at')->label('Finished')->dateTime('d M Y H:i:s')->timezone(config('opsifin_cron.default_timezone'))->placeholder('—'),
                     TextEntry::make('duration_ms')->label('Duration')->formatStateUsing(fn (?int $state) => $state === null ? '—' : number_format($state).' ms'),
                     TextEntry::make('http_status')->label('HTTP')->badge()->placeholder('—'),
-                    TextEntry::make('worker')->label('Worker')->placeholder('—')->columnSpan(2),
+                    TextEntry::make('worker')->label('Executor')->placeholder('—')->columnSpan(2),
                     TextEntry::make('response_excerpt')->label('Response excerpt')->fontFamily('mono')->placeholder('—')->columnSpan(2),
                     TextEntry::make('error_message')->label('Error')->placeholder('—')->columnSpan(2),
                 ]),

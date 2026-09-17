@@ -1,7 +1,14 @@
 # Arsitektur Opsifin Scheduler
 
-Ini adalah satu-satunya dokumen arsitektur aktif. Sistem sengaja dibatasi pada
-kebutuhan URL/job, cron, queue, status eksekusi, pause/resume, dan retry manual.
+Arsitektur aktif mendukung driver queue selama compatibility window dan direct
+bounded HTTP sebagai target migrasi. Konfigurasi, cutover, dan rollback ada di
+[runbook direct](direct-http-operations.md).
+
+Dokumen ini adalah ringkasan developer. Versi lengkap dengan system context,
+container topology, sequence diagram, state machine, capacity, security, dan
+deployment flow berada di
+[Artifact Teknis Opsifin Scheduler](artifact-teknis-opsifin-scheduler.md).
+Panduan operasional UI per module berada di [User Guide](user-guide.md).
 
 ## Keputusan utama
 
@@ -9,9 +16,9 @@ kebutuhan URL/job, cron, queue, status eksekusi, pause/resume, dan retry manual.
 | --- | --- |
 | Clock | Satu system cron menjalankan `artisan schedule:run` setiap menit |
 | Jadwal dinamis | Dispatcher membaca `schedules.next_run_at` dari database |
-| Eksekusi | Redis queue dengan Laravel Horizon yang dijaga Supervisor |
-| Retry | Satu HTTP attempt; retry hanya manual dari UI |
-| Downtime | Maksimal satu occurrence terbaru, tanpa replay backlog |
+| Eksekusi | Flag global `queue` (default Redis/Horizon) atau `direct` (rolling HTTP pool) |
+| Retry | Satu HTTP attempt; direct tanpa Retry, queue mempertahankan retry manual untuk rollback |
+| Downtime | Direct melewatkan occurrence di luar start window 55 detik; queue memakai occurrence terbaru |
 | Overlap | Satu running slot per schedule; occurrence lain menjadi skipped |
 | Katalog legacy | Setiap file `crontab-legacy/jobs/*.sh` menjadi tepat satu task template |
 | Variasi request | Definisi canonical di template, bukan runtime override per client |
@@ -19,6 +26,20 @@ kebutuhan URL/job, cron, queue, status eksekusi, pause/resume, dan retry manual.
 | Development | WSL2 + aaPanel |
 
 ## Diagram runtime
+
+Direct mode:
+
+```text
+schedule:run → jobs:dispatch-due → MySQL Run(pending)
+                                      │
+Supervisor → jobs:work-direct → DB lease + atomic claim
+                                      │
+                           rolling pool (bounded C)
+                                      │
+                       HTTP endpoint → terminal Run
+```
+
+Queue mode selama compatibility window:
 
 ```text
 Linux/aaPanel cron
@@ -115,7 +136,10 @@ queued → running → succeeded
        └──────────→ skipped
 ```
 
-Retry membuat Run baru dengan `source_run_id`; Run lama tidak ditimpa.
+Pada queue, Retry membuat Run baru dengan `source_run_id`; Run lama tidak ditimpa.
+Pada direct, `pending → running → succeeded/failed/skipped`; pending dapat
+dibatalkan atau kedaluwarsa menjadi skipped. Run Now membuat occurrence manual
+baru. Tidak ada automatic retry atau catch-up.
 
 ## Algoritma dispatcher
 
@@ -127,12 +151,21 @@ Setiap menit:
 4. hitung occurrence cron terbaru yang tidak melebihi waktu sekarang;
 5. hitung `next_run_at` berikutnya dari waktu sekarang;
 6. bila `prevent_overlap` aktif, buat Run skipped jika running slot masih dipakai;
-7. selain itu buat Run queued;
-8. commit transaction, lalu publish payload ke Redis.
+7. direct: buat pending jika masih dalam window, selain itu skipped; queue: buat queued;
+8. commit transaction; publish Redis hanya untuk Run queued.
 
 `materialization_key` unik mencegah occurrence yang sama dibuat dua kali.
 
 ## Algoritma worker
+
+Aturan claim/validation/overlap/completion bersama ada di `RunExecutionLifecycle`.
+Direct memvalidasi window sebelum claim dan sebelum send; timestamp `started_at`
+dan `start_lag_ms` ditulis ketika slot tersedia. Result hanya boleh memperbarui
+Run yang masih running, termasuk saat callback terlambat setelah recovery.
+Daemon direct terus polling dan heartbeat selama in-flight; hanya prefix respons
+yang ditahan di memori. SIGTERM menghentikan admission dan drain request aktif.
+
+Queue compatibility:
 
 1. Atomic claim Run `queued → running`.
 2. Isi worker dan execution deadline.
@@ -165,10 +198,10 @@ lama tidak diubah diam-diam. Assignment baru default paused.
 
 | Failure | Hasil |
 | --- | --- |
-| HTTP 4xx/5xx | Run failed; operator boleh Retry |
+| HTTP 4xx/5xx | Run failed; Retry hanya pada queue, direct memakai Run Now baru |
 | Connection/timeout | Run failed; tidak ada automatic retry |
 | Worker mati | Deadline recovery menandai failed dan melepas slot |
-| Dispatcher downtime | Saat pulih hanya occurrence terbaru dibuat |
+| Dispatcher downtime | Occurrence terbaru dibuat; direct skip bila start window sudah lewat |
 | State dipause setelah queue | Worker menyimpan skipped tanpa HTTP call |
 | Previous run aktif | Occurrence berikutnya skipped |
 

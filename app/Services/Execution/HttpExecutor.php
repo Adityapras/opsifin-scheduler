@@ -64,7 +64,7 @@ class HttpExecutor implements Executor
             sensitiveValues: array_values(array_filter([
                 (string) $client->auth_secret,
                 (string) $client->auth_secret_key,
-            ])),
+            ], fn (string $secret) => $secret !== '')),
         );
     }
 
@@ -91,7 +91,7 @@ class HttpExecutor implements Executor
             return new ExecutionResult(
                 success: $success,
                 statusCode: $response->status(),
-                outputExcerpt: Str::limit($response->body(), $limit),
+                outputExcerpt: Str::limit($request->redact($response->body()), $limit),
                 errorMessage: $success ? null : 'HTTP '.$response->status().' '.$response->reason(),
                 durationMs: $this->duration($started),
             );
@@ -100,7 +100,7 @@ class HttpExecutor implements Executor
                 success: false,
                 statusCode: null,
                 outputExcerpt: null,
-                errorMessage: Str::limit($exception->getMessage(), 1000),
+                errorMessage: Str::limit($request->redact($exception->getMessage()), 1000),
                 durationMs: $this->duration($started),
             );
         } catch (Throwable $exception) {
@@ -108,7 +108,7 @@ class HttpExecutor implements Executor
                 success: false,
                 statusCode: null,
                 outputExcerpt: null,
-                errorMessage: Str::limit($exception->getMessage(), 1000),
+                errorMessage: Str::limit($request->redact($exception->getMessage()), 1000),
                 durationMs: $this->duration($started),
             );
         }

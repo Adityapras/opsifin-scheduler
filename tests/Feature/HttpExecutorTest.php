@@ -75,4 +75,24 @@ class HttpExecutorTest extends TestCase
             );
         }
     }
+
+    public function test_response_is_redacted_before_excerpt_truncation(): void
+    {
+        config(['opsifin_cron.response_excerpt_length' => 12]);
+        $schedule = $this->schedule();
+        Http::fake(['*' => Http::response('prefix super-secret', 500)]);
+        $executor = app(HttpExecutor::class);
+        $result = $executor->execute($executor->resolve($schedule->taskTemplate, $schedule->client));
+
+        $this->assertStringNotContainsString('super', $result->outputExcerpt);
+    }
+
+    public function test_zero_credential_is_not_filtered_out_of_redaction(): void
+    {
+        $schedule = $this->schedule();
+        $schedule->client->update(['auth_secret' => '0']);
+        $request = app(HttpExecutor::class)->resolve($schedule->taskTemplate, $schedule->client);
+
+        $this->assertSame('value=••••••••', $request->redact('value=0'));
+    }
 }

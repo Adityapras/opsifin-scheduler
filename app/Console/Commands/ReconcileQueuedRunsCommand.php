@@ -16,6 +16,11 @@ class ReconcileQueuedRunsCommand extends Command
 
     public function handle(RunDispatcher $dispatcher): int
     {
+        if (config('opsifin_cron.execution_driver') === 'direct') {
+            $this->components->info('Direct mode: queued reconciliation is disabled.');
+
+            return self::SUCCESS;
+        }
         $ids = Run::query()
             ->where('status', RunStatus::Queued->value)
             ->whereNull('queue_job_id')

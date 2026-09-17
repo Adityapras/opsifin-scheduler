@@ -1,8 +1,12 @@
 # Opsifin Scheduler
 
 Scheduler HTTP berbasis Laravel 13 dan Filament 5. Job didefinisikan sekali,
-di-assign ke banyak client, dijalankan melalui database queue, dan hasilnya
-disimpan sebagai success atau failed.
+di-assign ke banyak client, lalu dieksekusi melalui Redis/Horizon atau direct
+bounded HTTP. Hasil setiap occurrence disimpan di database.
+
+Direct HTTP tersedia melalui `CRON_EXECUTION_DRIVER=direct` dan daemon
+`jobs:work-direct`. Default tetap `queue` selama compatibility window.
+Lihat [deployment dan rollback direct](docs/direct-http-operations.md).
 
 ## Arsitektur singkat
 
@@ -18,10 +22,8 @@ jobs:dispatch-due
         ├─ schedules.next_run_at <= sekarang
         ├─ buat run
         ├─ hitung next_run_at berikutnya
-        └─ dispatch database queue
-                         │
-                         ▼
-                 Supervisor worker
+        ├─ direct: Run pending → supervised bounded HTTP pool
+        └─ queue: Redis → Horizon worker (compatibility)
                          │
                          ▼
                   HTTP endpoint client
@@ -39,9 +41,10 @@ jobs:dispatch-due
 - Set cron, pause, dan resume secara bulk.
 - Cron preview dan `next_run_at` yang eksplisit.
 - Overlap guard per schedule dengan perilaku skip seperti `flock -n`.
-- Database queue dengan dua Supervisor worker.
-- Run now dan retry manual.
-- Histori queued, running, succeeded, failed, dan skipped.
+- Direct HTTP dengan concurrency terbatas; Redis/Horizon tersedia untuk rollback.
+- Run now di background; retry manual hanya untuk Run queue dalam mode queue.
+- Histori pending/queued, running, succeeded, failed, skipped, dan cancelled.
+- Heartbeat executor/dispatcher, start lag, dan peringatan occurrence terlewat.
 - Audit perubahan client, template, dan schedule.
 - Import legacy memakai `crontab-legacy/jobs/*.sh` sebagai katalog canonical dan
   selalu menghasilkan schedule disabled.
@@ -77,8 +80,11 @@ Runtime development:
 # Satu task aaPanel Cron, setiap menit
 cd /home/aditya_prasetyo/project/opsifin-crontab && /www/server/php/84/bin/php artisan schedule:run
 
-# Supervisor
-/www/server/php/84/bin/php artisan queue:work database --queue=default --sleep=1 --tries=1 --timeout=1900 --max-time=3600
+# Supervisor pada driver queue (default compatibility)
+/www/server/php/84/bin/php artisan horizon
+
+# Supervisor setelah environment diatur CRON_EXECUTION_DRIVER=direct
+/www/server/php/84/bin/php artisan jobs:work-direct
 ```
 
 ## Import legacy
@@ -95,14 +101,17 @@ database berisi data wajib memakai `--fresh` setelah backup.
 
 ## Dokumentasi
 
+- [Index dokumentasi](docs/README.md)
 - [Artifact teknis end-to-end](docs/artifact-teknis-opsifin-scheduler.md)
 - [Arsitektur dan flow teknis](docs/architecture.md)
-- [User guide](docs/user-guide.md)
+- [User guide dan panduan per module](docs/user-guide.md)
 - [Development WSL + aaPanel](docs/installation.md)
 - [Deployment production VPS](docs/deployment-vps.md)
 - [Migrasi database existing ke VPS](docs/database-migration-vps.md)
 - [Operations, troubleshooting, dan cutover](docs/operations.md)
 - [Handoff/memory terakhir](docs/handoff.md)
+- [Direct HTTP: deployment dan rollback](docs/direct-http-operations.md)
+- [Direct HTTP: hasil validasi lokal](docs/direct-http-validation.md)
 
 ## Verifikasi
 
@@ -113,4 +122,6 @@ CACHE_STORE=array /www/server/php/84/bin/php artisan schedule:list
 npm run build
 ```
 
-Status 19 Agustus 2026: **66 test, 231 assertion**.
+Validasi 10 September 2026: **120 test lulus, 447 assertion**; satu capacity test
+opt-in dijalankan terpisah. Pint dan Vite build lulus. Bukti serta batasan
+pengujian tercatat di [laporan validasi](docs/direct-http-validation.md).

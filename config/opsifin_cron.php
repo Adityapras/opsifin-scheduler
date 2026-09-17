@@ -2,6 +2,18 @@
 
 return [
 
+    // Keep queue as the deployment default during the rollback window.
+    'execution_driver' => env('CRON_EXECUTION_DRIVER', 'queue'),
+    'direct' => [
+        'concurrency' => (int) env('CRON_DIRECT_CONCURRENCY', 20),
+        'batch_limit' => (int) env('CRON_DIRECT_BATCH_LIMIT', 250),
+        'poll_interval_ms' => (int) env('CRON_DIRECT_POLL_INTERVAL_MS', 500),
+        'start_window_sec' => (int) env('CRON_DIRECT_START_WINDOW_SEC', 55),
+        'heartbeat_sec' => (int) env('CRON_DIRECT_HEARTBEAT_SEC', 15),
+        'idle_delay_ms' => (int) env('CRON_DIRECT_IDLE_DELAY_MS', 500),
+        'response_max_bytes' => (int) env('CRON_DIRECT_RESPONSE_MAX_BYTES', 65536),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Sumber repo cron legacy
@@ -31,7 +43,7 @@ return [
     ],
 
     // Potong body respons sebelum disimpan ke tabel `runs`.
-    'response_excerpt_length' => 2000,
+    'response_excerpt_length' => (int) env('CRON_RESPONSE_EXCERPT_LENGTH', 2000),
 
     // Retensi tabel `runs` (hari).
     'runs_retention_days' => (int) env('CRON_RUNS_RETENTION_DAYS', 90),

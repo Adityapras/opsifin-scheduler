@@ -4,6 +4,7 @@ namespace App\Enums;
 
 enum RunStatus: string
 {
+    case Pending = 'pending';
     case Queued = 'queued';
     case Running = 'running';
     case Succeeded = 'succeeded';
@@ -14,6 +15,7 @@ enum RunStatus: string
     public function label(): string
     {
         return match ($this) {
+            self::Pending => 'Pending',
             self::Queued => 'Queued',
             self::Running => 'Running',
             self::Succeeded => 'Succeeded',
@@ -30,7 +32,7 @@ enum RunStatus: string
 
     public function isTerminal(): bool
     {
-        return ! in_array($this, [self::Queued, self::Running], true);
+        return ! in_array($this, [self::Pending, self::Queued, self::Running], true);
     }
 
     public function color(): string
@@ -38,7 +40,7 @@ enum RunStatus: string
         return match ($this) {
             self::Succeeded => 'success',
             self::Failed => 'danger',
-            self::Queued, self::Running => 'info',
+            self::Pending, self::Queued, self::Running => 'info',
             self::Skipped => 'warning',
             self::Cancelled => 'gray',
         };

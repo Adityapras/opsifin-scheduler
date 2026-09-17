@@ -17,11 +17,12 @@ class DueScheduleDispatcher
         private readonly RunDispatcher $runs,
     ) {}
 
-    /** @return array{scanned: int, queued: int, skipped: int, recovered: int, errors: array<int, string>} */
+    /** @return array{scanned: int, queued: int, pending: int, skipped: int, recovered: int, errors: array<int, string>} */
     public function dispatch(?Carbon $at = null): array
     {
         $at = ($at ?? now())->copy()->setTimezone(config('app.timezone'))->startOfMinute();
         $recovered = $this->recoverExpiredRuns($at);
+        $this->expirePendingRuns();
 
         $ids = Schedule::query()
             ->where('is_enabled', true)
@@ -33,6 +34,7 @@ class DueScheduleDispatcher
             ->pluck('id');
 
         $queued = 0;
+        $pending = 0;
         $skipped = 0;
         $errors = [];
 
@@ -46,13 +48,16 @@ class DueScheduleDispatcher
                 }
 
                 $skipped += $run?->status === RunStatus::Skipped ? 1 : 0;
+                $pending += $run?->status === RunStatus::Pending && $run->wasRecentlyCreated ? 1 : 0;
             } catch (Throwable $exception) {
                 $errors[] = 'schedule '.$id.': '.Str::limit($exception->getMessage(), 500);
                 report($exception);
             }
         }
 
-        return compact('queued', 'skipped', 'recovered', 'errors') + ['scanned' => $ids->count()];
+        DB::table('executor_states')->where('name', 'dispatcher')->update(['heartbeat_at' => now()]);
+
+        return compact('queued', 'pending', 'skipped', 'recovered', 'errors') + ['scanned' => $ids->count()];
     }
 
     private function dispatchSchedule(int $scheduleId, Carbon $at): ?Run
@@ -68,6 +73,12 @@ class DueScheduleDispatcher
 
         $scheduledFor = $this->calculator->latestDue($schedule, $at);
         $schedule->forceFill(['next_run_at' => $this->calculator->next($schedule, $at)])->save();
+
+        if (config('opsifin_cron.execution_driver') === 'direct'
+            && $scheduledFor->copy()->addSeconds(config('opsifin_cron.direct.start_window_sec'))->lte(now())) {
+            return $this->runs->materialize($schedule, $scheduledFor, status: RunStatus::Skipped,
+                skipReason: 'Missed start window; occurrence will not be replayed.');
+        }
 
         $slotBusy = $schedule->prevent_overlap
             && $schedule->running_run_id !== null
@@ -89,7 +100,7 @@ class DueScheduleDispatcher
         return $this->runs->materialize($schedule, $scheduledFor);
     }
 
-    private function recoverExpiredRuns(Carbon $at): int
+    public function recoverExpiredRuns(Carbon $at): int
     {
         $recovered = 0;
 
@@ -107,7 +118,10 @@ class DueScheduleDispatcher
                         ->update([
                             'status' => RunStatus::Failed->value,
                             'finished_at' => $at,
-                            'error_message' => 'The worker did not finish before the execution deadline.',
+                            'execution_deadline_at' => null,
+                            'error_message' => $run->execution_driver === 'direct'
+                                ? 'Execution process ended after HTTP may have been sent; endpoint outcome is unknown. No retry.'
+                                : 'The worker did not finish before the execution deadline.',
                             'updated_at' => $at,
                         ]);
 
@@ -125,5 +139,13 @@ class DueScheduleDispatcher
             });
 
         return $recovered;
+    }
+
+    public function expirePendingRuns(): int
+    {
+        return Run::query()->where('status', RunStatus::Pending->value)
+            ->where('scheduled_for', '<=', now()->subSeconds(config('opsifin_cron.direct.start_window_sec')))
+            ->update(['status' => RunStatus::Skipped->value, 'finished_at' => now(), 'duration_ms' => 0,
+                'error_message' => 'Missed start window; occurrence will not be replayed.', 'updated_at' => now()]);
     }
 }

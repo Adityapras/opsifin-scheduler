@@ -2,261 +2,207 @@
 
 | Metadata | Nilai |
 | --- | --- |
-| Dokumen | Arsitektur dan workflow teknis end-to-end |
+| Dokumen | Arsitektur, desain, dan workflow teknis end-to-end |
 | Sistem | Opsifin Scheduler |
-| Versi artifact | 1.0 |
-| Diperbarui | 21 Agustus 2026 |
-| Target runtime | Laravel 13, Filament 5, MySQL, Redis, Horizon, Supervisor |
-| Timezone bisnis | `Asia/Jakarta` |
-| Status arsitektur | Redis Queue dan Horizon adalah target runtime terbaru |
+| Versi artifact | 2.0 |
+| Diperbarui | 10 September 2026 |
+| Stack | Laravel 13, Filament 5, MySQL, Supervisor, cURL/Guzzle |
+| Target eksekusi | Direct Bounded HTTP |
+| Compatibility/rollback | Redis Queue dan Horizon |
+| Timezone bisnis default | `Asia/Jakarta` |
 
-Dokumen ini menjelaskan Opsifin Scheduler dari hulu ke hilir: bagaimana data
-Client dan Job Template dibentuk, bagaimana Schedule dihitung, bagaimana Run
-dibuat dan dipublikasikan ke Redis, bagaimana Horizon mengeksekusi HTTP request,
-bagaimana hasil disimpan, dan bagaimana sistem pulih ketika terjadi gangguan.
+Dokumen ini menjelaskan sistem dari konteks bisnis sampai proses, data, failure
+semantics, keamanan, observability, deployment, dan source map. Source code
+adalah sumber kebenaran implementasi. Cara memakai UI berada di
+[Panduan Pengguna](user-guide.md), sedangkan operasi deployment direct berada di
+[Direct HTTP Operations](direct-http-operations.md).
 
-Dokumen ini menggunakan implementasi pada source code sebagai sumber kebenaran.
-Runbook deployment terpisah tersedia di
-[redis-horizon-cutover-vps.md](redis-horizon-cutover-vps.md).
-
-## 1. Ringkasan sistem
+## 1. Executive summary
 
 Opsifin Scheduler adalah control plane untuk menjalankan HTTP job terjadwal ke
-banyak Client. Operator tidak membuat cron Linux untuk setiap Client. Satu
-Laravel Scheduler membaca seluruh konfigurasi Schedule dari MySQL, membuat Run,
-dan mengirim payload eksekusi ke Redis Queue.
+banyak Client. Satu Task Template mendefinisikan request reusable; Schedule
+menghubungkannya dengan Client serta timing; Run merepresentasikan satu
+occurrence dan satu HTTP attempt.
 
-Karakteristik utama sistem:
+Target runtime menggunakan satu daemon `jobs:work-direct` dengan rolling cURL
+pool dan concurrency global terbatas. MySQL menyimpan pending work, lease,
+ownership, hasil, dan histori. Redis/Horizon tetap tersedia selama compatibility
+window untuk rollback, tetapi Run direct tidak dipublikasikan ke queue.
 
-- definisi HTTP job dibuat sekali sebagai Task Template;
-- satu Task Template dapat di-assign ke banyak Client;
-- setiap assignment memiliki cron expression, timezone, status enable, dan
-  aturan overlap sendiri;
-- satu system cron memanggil Laravel Scheduler setiap menit;
-- Redis menyimpan payload queue;
-- Horizon mengatur dan memantau worker Redis;
-- hasil eksekusi dan histori bisnis tetap disimpan di MySQL;
-- setiap Run melakukan tepat satu HTTP attempt;
-- HTTP failure tidak di-retry otomatis;
-- retry dilakukan secara eksplisit oleh operator;
-- perubahan domain penting dicatat di Audit Log.
+Prinsip desain:
+
+- satu katalog job canonical, bukan template per Client;
+- satu system cron, bukan cron per job/Client;
+- materialization idempotent dan atomic claim;
+- tepat satu HTTP attempt per Run;
+- bounded concurrency dan bounded response memory;
+- no automatic retry, no full catch-up, no resend outcome ambigu;
+- result bisnis authoritative di MySQL Execution logs;
+- credential di-redact sebelum preview atau persistence output.
 
 ## 2. Tujuan dan batas sistem
 
 ### 2.1 Tujuan
 
-Sistem dibangun untuk:
+- Memusatkan cron/script HTTP ke konfigurasi yang dapat diaudit.
+- Memakai satu definisi request untuk banyak Client.
+- Menjadwalkan berdasarkan cron dan timezone tiap assignment.
+- Menyediakan Run now, cancel sebelum start, dan histori hasil.
+- Menjaga batas concurrency agar burst tidak membuat host tidak stabil.
+- Mencegah duplicate occurrence dan overlap Schedule.
+- Menyediakan health signal executor, dispatcher, slot, dan start lag.
+- Mempertahankan jalur queue sementara untuk rollback release.
 
-- menggantikan ratusan script dan entry crontab legacy dengan konfigurasi yang
-  dapat dikelola melalui UI;
-- menjaga katalog job agar canonical dan tidak digandakan per Client;
-- memberikan histori eksekusi yang dapat difilter dan diperiksa;
-- memberikan pause, resume, run now, cancel queued run, dan retry manual;
-- mencegah overlap untuk Schedule yang sama;
-- memisahkan beban queue dari MySQL menggunakan Redis;
-- menyediakan observability worker melalui Horizon dan observability teknis
-  Laravel melalui Telescope.
+### 2.2 Non-goals
 
-### 2.2 Batas yang disengaja
-
-Sistem tidak menyediakan:
-
-- automatic retry untuk HTTP 4xx, 5xx, connection error, atau timeout;
-- replay seluruh occurrence yang terlewat selama downtime;
-- cron Linux per Client atau per job;
-- runtime request override khusus per Client;
-- blackout calendar;
-- incident management atau alert engine internal;
-- distributed Redis/MySQL high availability bawaan;
-- pembatalan paksa untuk HTTP request yang sudah berjalan.
+- Automatic retry HTTP atau replay seluruh downtime.
+- Pembatalan paksa request yang sudah dikirim.
+- Driver berbeda per Client/Task/Schedule.
+- Distributed transaction MySQL–Redis.
+- High availability multi-region bawaan.
+- Blackout calendar, dependency graph, incident engine, atau watchdog luar.
+- Menjamin idempotency endpoint Client.
+- Mengaktifkan Schedule secara otomatis setelah import.
 
 ## 3. Technology stack
 
 | Layer | Teknologi | Tanggung jawab |
 | --- | --- | --- |
-| Backend | PHP 8.3+ dan Laravel 13 | Domain, scheduling, queue dispatch, execution |
-| Admin UI | Filament 5 | Pengelolaan Client, Template, Schedule, Run, User |
-| Primary storage | MySQL | Data bisnis, histori Run, session, cache, failed jobs |
-| Queue broker | Redis | Payload queue dan data internal Horizon |
-| Redis client | Predis | Koneksi Laravel/PHP ke Redis Server |
-| Queue manager | Laravel Horizon 5 | Worker pool, balancing, queue metrics, dashboard |
-| Process manager | Supervisor | Menjaga master Horizon tetap hidup |
-| Scheduler trigger | system cron | Menjalankan `artisan schedule:run` setiap menit |
-| Technical observability | Laravel Telescope | Request, job, exception, command, schedule |
-| HTTP client | Laravel HTTP Client | Eksekusi request ke endpoint Client |
-| Frontend build | Vite 8 dan Tailwind CSS 4 | Asset aplikasi |
+| Backend | PHP 8.3+ / Laravel 13 | Domain, scheduler, lifecycle, command |
+| Admin UI | Filament 5 / Livewire | Configuration dan operations UI |
+| Primary storage | MySQL | Source of truth, Run, lease, audit, session/cache |
+| Direct transport | Guzzle + cURL multi | Rolling bounded HTTP pool |
+| Process manager | Supervisor | Menjaga direct executor/Horizon |
+| Scheduler clock | system cron | `artisan schedule:run` setiap menit |
+| Queue compatibility | Redis + Horizon | Jalur queue dan rollback |
+| Technical diagnostics | Telescope/log Laravel | Request web, command, exception |
+| Frontend | Vite 8 / Tailwind CSS 4 | Asset panel |
 
 ## 4. System context
 
-```text
-                       +------------------------+
-                       | Administrator/Operator |
-                       | Viewer                 |
-                       +-----------+------------+
-                                   |
-                                   | HTTPS
-                                   v
-+---------------+       +----------+-----------+       +----------------+
-| system cron   +------>| Laravel + Filament   +------>| MySQL          |
-| setiap menit  |       | Opsifin Scheduler    |       | source of truth|
-+---------------+       +----------+-----------+       +----------------+
-                                   |
-                                   | publish ExecuteRun
-                                   v
-                       +-----------+------------+
-                       | Redis Queue            |
-                       | Horizon metadata       |
-                       +-----------+------------+
-                                   |
-                                   v
-                       +-----------+------------+
-                       | Horizon workers        |
-                       | dijaga Supervisor      |
-                       +-----------+------------+
-                                   |
-                                   | HTTP/HTTPS
-                                   v
-                       +-----------+------------+
-                       | Endpoint Client        |
-                       +------------------------+
+```mermaid
+flowchart LR
+    Users[Administrator<br/>Operator<br/>Viewer]
+    Cron[System cron]
+    App[Opsifin Scheduler<br/>Laravel + Filament]
+    DB[(MySQL)]
+    Exec[Direct executor<br/>Supervisor]
+    Queue[Redis + Horizon<br/>compatibility]
+    Client[HTTP endpoints<br/>Client]
+    Monitor[External monitoring]
+
+    Users -->|HTTPS /admin| App
+    Cron -->|schedule:run per minute| App
+    App <--> DB
+    Exec <--> DB
+    Exec -->|bounded HTTP| Client
+    App -. queue mode .-> Queue
+    Queue -. ExecuteRun .-> Client
+    Monitor -->|health, process, host metrics| App
 ```
 
-## 5. Runtime topology
+Trust boundaries:
 
-### 5.1 MySQL
+- browser ke panel wajib HTTPS di production;
+- MySQL dan Redis tidak diekspos ke internet;
+- endpoint Client berada di luar transaction boundary aplikasi;
+- backup DB sensitif karena Client credential disimpan sesuai input;
+- external monitoring diperlukan untuk mendeteksi host mati total.
 
-MySQL adalah source of truth untuk:
+## 5. Container dan runtime topology
 
-- user dan role;
-- Client dan credential;
-- Task Template;
-- Schedule dan `next_run_at`;
-- Run dan hasil eksekusi;
-- Audit Log;
-- import history dan findings;
-- Laravel session;
-- Laravel cache;
-- Laravel failed queue jobs;
-- Telescope entries.
+### 5.1 Direct target
 
-### 5.2 Redis
-
-Redis hanya dipakai oleh subsistem queue dan Horizon:
-
-| Logical DB | Isi |
-| --- | --- |
-| Redis DB 0 | Metadata, supervisor state, recent jobs, dan metrics Horizon |
-| Redis DB 2 | Payload queue `default` |
-
-`REDIS_CACHE_DB=1` boleh tersedia dalam konfigurasi framework, tetapi tidak
-digunakan selama `CACHE_STORE=database`.
-
-Logical DB bukan Redis Server terpisah. Keduanya adalah namespace pada Redis
-Server yang sama. Untuk production, Redis harus menggunakan AOF,
-`appendfsync everysec`, dan `maxmemory-policy noeviction`.
-
-### 5.3 Horizon dan Supervisor
-
-Supervisor menjalankan satu master process:
-
-```bash
-php artisan horizon
+```mermaid
+flowchart TB
+    SC[system cron] --> SR[artisan schedule:run]
+    SR --> DD[jobs:dispatch-due]
+    DD --> S[(schedules)]
+    DD --> R[(runs: pending)]
+    W[Supervisor] --> WD[jobs:work-direct]
+    WD --> ES[(executor_states lease)]
+    WD --> R
+    WD --> P[rolling cURL multi pool<br/>max C active]
+    P --> EP[Client endpoints]
+    P --> R2[(terminal Run result)]
+    UI[Filament UI] --> S
+    UI --> R2
 ```
 
-Master Horizon mengatur worker berdasarkan konfigurasi:
+Komponen direct:
 
-| Parameter | Production default |
-| --- | --- |
-| Connection | `redis` |
-| Queue | `default` |
-| Balancing | `auto`, strategy `time` |
-| Minimum worker | 2 |
-| Maksimum worker | 10 |
-| Worker memory | 128 MB |
-| Worker max time | 3600 detik |
-| Job tries | 1 |
-| Worker timeout | 1900 detik |
-| Redis retry after | 2000 detik |
-| Blocking pop | 5 detik |
+- `jobs:dispatch-due`: materialize occurrence dan heartbeat dispatcher;
+- `jobs:work-direct`: daemon admission, lease, pool, heartbeat, dan drain;
+- `RunExecutionLifecycle`: claim, validation, overlap, deadline, result;
+- `DirectHttpTransport`: async request berbasis cURL/Guzzle;
+- `BoundedResponseStream`: mengonsumsi response penuh, menyimpan prefix terbatas;
+- `executor_states`: lease owner dan metrics snapshot.
 
-Invariant waktunya:
+### 5.2 Queue compatibility
 
-```text
-Task request timeout <= Horizon worker timeout
-Horizon worker timeout < Redis retry_after
-Supervisor stopwaitsecs >= Redis retry_after
+```mermaid
+flowchart LR
+    D[jobs:dispatch-due] --> R[(Run queued)]
+    R --> P[RunDispatcher publish]
+    P --> Q[(Redis queue)]
+    Q --> H[Horizon worker]
+    H --> J[ExecuteRun]
+    J --> RW[RunWorker]
+    RW --> HTTP[HttpExecutor]
+    HTTP --> C[Client endpoint]
+    HTTP --> R
 ```
 
-Form Task Template membatasi request timeout maksimal 1800 detik. Margin antara
-1800, 1900, dan 2000 detik mengurangi risiko payload diambil worker lain sebelum
-worker pertama benar-benar dihentikan.
+`queued_at`, `queue_job_id`, reconciler, Redis, dan Horizon dipertahankan selama
+rollback window. Queue worker hanya claim `queued`; direct executor hanya claim
+`pending` dengan `execution_driver=direct`.
+
+### 5.3 Process ownership
+
+Supervisor menjalankan satu active direct executor (`numprocs=1`). Bila daemon
+kedua hidup, hanya pemilik lease database yang melakukan admission; daemon lain
+standby. Lease memiliki heartbeat dan expiry sehingga takeover tidak membuat
+dua pool aktif bersamaan.
 
 ## 6. Domain model
 
-```text
-users
-  |
-  +---- audit_logs
-
-clients 1 ----- * schedules * ----- 1 task_templates
-   |                  |                       |
-   |                  +----- 1 ----- * runs --+
-   |                                      |
-   +--------------------------- * --------+
-
-runs 0..1 ----- source_run_id ----- 1 runs
-
-import_runs 1 ----- * import_findings
+```mermaid
+erDiagram
+    USERS ||--o{ AUDIT_LOGS : acts
+    CLIENTS ||--o{ SCHEDULES : has
+    TASK_TEMPLATES ||--o{ SCHEDULES : assigned
+    SCHEDULES ||--o{ RUNS : materializes
+    CLIENTS ||--o{ RUNS : references
+    TASK_TEMPLATES ||--o{ RUNS : references
+    RUNS o|--o{ RUNS : source_run
+    IMPORT_RUNS ||--o{ IMPORT_FINDINGS : contains
+    EXECUTOR_STATES {
+        string name PK
+        string owner
+        timestamp expires_at
+        timestamp heartbeat_at
+        json metrics
+    }
 ```
 
 ### 6.1 User
 
-User mengakses panel Filament. Role yang tersedia:
-
-| Role | Kemampuan utama |
-| --- | --- |
-| Administrator | CRUD master data, kebijakan Schedule, User, Horizon, Telescope |
-| Operator | Pause/resume, run now, cancel queued Run, retry Run gagal |
-| Viewer | Membaca konfigurasi, preview aman, histori, dan Audit Log |
-
-Hanya user aktif yang dapat masuk panel. Horizon dan Telescope dibatasi untuk
-Administrator.
+User memiliki role `admin`, `operator`, atau `viewer` dan state `is_active`.
+Policy membedakan kemampuan manage dan operate. Password di-hash; avatar berada
+di public storage.
 
 ### 6.2 Client
 
-Client merepresentasikan satu target Opsifin dan menyimpan:
-
-- `code` dan nama;
-- `base_url`;
-- timezone;
-- status aktif;
-- tipe autentikasi `basic`, `bearer`, atau `none`;
-- username, secret, dan secret key;
-- metadata serta catatan migrasi legacy.
-
-Credential disimpan sesuai nilai input dan disembunyikan dari serialisasi model.
-Karena credential berada di database, backup MySQL harus dianggap sensitif.
-
-Menonaktifkan Client mencegah semua assignment-nya dieksekusi tanpa menghapus
-Schedule atau histori Run.
+Menyimpan code, name, base URL, timezone, active state, auth type, username,
+secret, secret key, serta metadata/review legacy. Deactivate adalah master switch
+tanpa menghapus assignment atau histori.
 
 ### 6.3 Task Template
 
-Task Template adalah definisi canonical sebuah HTTP job:
+Menyimpan key, name, executor HTTP, method/path/body/headers, connect timeout,
+request timeout, active state, default Schedule policy, dan metadata legacy.
 
-- key stabil;
-- nama dan deskripsi;
-- executor, saat ini hanya `http`;
-- HTTP method;
-- endpoint path;
-- headers tambahan;
-- JSON body;
-- connect timeout dan request timeout;
-- status aktif;
-- kebijakan default Schedule untuk Client baru;
-- metadata migrasi legacy.
-
-Placeholder yang didukung:
+Placeholder runtime:
 
 ```text
 {{client.code}}
@@ -267,968 +213,433 @@ Placeholder yang didukung:
 {{run.scheduled_for}}
 ```
 
-`{{client.password}}` adalah alias kompatibilitas untuk
-`{{client.secret}}`. `{{run.scheduled_for}}` dikirim sebagai ISO-8601 UTC.
-
 ### 6.4 Schedule
 
-Schedule menghubungkan satu Client dengan satu Task Template pada waktu tertentu:
+Menghubungkan Client dan Template melalui cron, timezone, enabled state,
+`next_run_at`, queue compatibility, overlap flag, dan `running_run_id`.
 
-```text
-client_id
-task_template_id
-cron_expression
-timezone
-is_enabled
-next_run_at
-queue
-prevent_overlap
-running_run_id
-```
+Unique key: `client_id + task_template_id + cron_expression`.
 
-Kombinasi berikut unik:
-
-```text
-client_id + task_template_id + cron_expression
-```
-
-Satu job dapat memiliki lebih dari satu timing untuk Client yang sama selama
-cron expression berbeda.
-
-Ketika Schedule di-pause:
-
-```text
-is_enabled = false
-next_run_at = null
-```
-
-Ketika di-resume, `next_run_at` dihitung ulang dari waktu sekarang. Sistem tidak
-memutar ulang semua occurrence selama Schedule di-pause.
+Pause mengosongkan `next_run_at`; Resume menghitung occurrence berikutnya dari
+sekarang. Beberapa timing diperbolehkan bila cron berbeda.
 
 ### 6.5 Run
 
-Run adalah satu occurrence atau satu permintaan eksekusi. Run menyimpan:
+Run menyimpan referensi domain, trigger, driver ownership, scheduled/prepared/
+queued/started/finished time, start lag, deadline, worker, HTTP status, duration,
+response excerpt, dan error. `materialization_key` mencegah occurrence terjadwal
+ganda; `source_run_id` hanya digunakan retry queue compatibility.
 
-- referensi Schedule, Client, dan Task Template;
-- `source_run_id` untuk retry;
-- `materialization_key` untuk idempotensi occurrence terjadwal;
-- `scheduled_for`;
-- trigger `schedule`, `manual`, atau `retry`;
-- status;
-- queue job ID Redis;
-- waktu queued, started, finished, dan execution deadline;
-- worker identity;
-- HTTP status;
-- duration;
-- response excerpt;
-- error message.
+### 6.6 Audit dan import
 
-Referensi Client dan Task Template didenormalisasi ke Run agar histori tetap
-dapat difilter walaupun Schedule kemudian dihapus.
+Audit Log merekam perubahan domain dengan actor dan before/after yang di-redact.
+Import Run/Finding merekam migrasi legacy; import bukan runtime harian.
 
-### 6.6 Audit Log
+## 7. Peta module aplikasi
 
-Observer mencatat create, update, dan delete pada Client, Task Template,
-Schedule, dan User ketika perubahan dilakukan oleh user login. Nilai dengan nama
-password, secret, token, authorization, atau API key di-redact sebelum disimpan.
-
-### 6.7 Import Run dan Finding
-
-Import Run mencatat satu proses import dari repository cron legacy. Import
-Finding menyimpan error, warning, atau informasi yang membutuhkan rekonsiliasi
-manual.
-
-## 7. Workflow konfigurasi dari UI
-
-### 7.1 Membuat Client baru
-
-```text
-Administrator membuat Client
-        |
-        v
-Client disimpan di MySQL
-        |
-        v
-DefaultScheduleProvisioner membaca Task Template aktif
-yang auto_assign_to_new_clients=true
-        |
-        v
-Schedule default dibuat secara transaction
-        |
-        v
-Schedule default paused kecuali kebijakan template menyatakan enabled
-```
-
-Default paused memberi ruang untuk memeriksa URL, credential, request preview,
-cron expression, dan timezone sebelum eksekusi pertama.
-
-### 7.2 Membuat atau mengubah Task Template
-
-Administrator menentukan request canonical. Perubahan template berlaku ke semua
-Schedule yang menggunakan template tersebut. Existing Schedule tidak otomatis
-mengikuti perubahan default cron karena default hanya digunakan saat assignment
-baru dibuat.
-
-### 7.3 Assignment
-
-Administrator dapat:
-
-- assign template ke seluruh Client aktif;
-- assign ke Client terpilih;
-- menghapus assignment terpilih;
-- mengatur cron dan timezone;
-- memilih apakah assignment langsung enabled.
-
-Assignment dibuat idempotent: assignment yang sudah ada tidak dibuat ulang dan
-konfigurasi Schedule lama tidak diubah diam-diam.
-
-### 7.4 Inspect request
-
-UI dapat resolve request tanpa memanggil endpoint. Preview menampilkan method,
-URL, headers, body, dan timeout. Credential dan header sensitif disamarkan.
-
-### 7.5 Pause dan resume
-
-Operator atau Administrator dapat pause/resume Schedule. Resume menghitung
-`next_run_at` berikutnya berdasarkan cron dan timezone dari waktu sekarang.
-
-## 8. Workflow import legacy
-
-Import legacy hanya digunakan untuk migrasi awal, bukan runtime harian.
-
-Sumber yang dibaca:
-
-```text
-opsifin_env.sh
-configs/*.conf
-gateway.sh
-jobs/*.sh
-folder-client/*.sh
-opsifin_crontab atau crontab.txt
-```
-
-Alurnya:
-
-```text
-Parse environment dan config
-        |
-        v
-Parse gateway dan canonical jobs/*.sh
-        |
-        v
-Parse script di folder Client
-        |
-        v
-Bentuk Task Template dari jobs/*.sh
-        |
-        v
-Bentuk Client dari config/folder
-        |
-        v
-Petakan entry crontab menjadi Schedule
-        |
-        v
-Simpan finding untuk drift atau data yang tidak dapat dipetakan
-        |
-        v
-Semua Schedule hasil import tetap disabled
-```
-
-Prinsip import:
-
-- `jobs/*.sh` adalah katalog canonical;
-- script Client hanya menentukan assignment lama;
-- perbedaan request Client tidak membuat template baru;
-- ketidakcocokan dicatat, bukan ditebak diam-diam;
-- dry run menggunakan transaction rollback;
-- `--fresh` diperlukan jika domain sudah berisi data dan hanya boleh dilakukan
-  setelah backup.
-
-Command terkait:
-
-```bash
-php artisan cron:import --fresh --dry-run --report=<path>
-php artisan cron:import --fresh --report=<path>
-php artisan cron:verify-import
-php artisan cron:cutover-status
-```
-
-## 9. Workflow scheduling otomatis
-
-### 9.1 Trigger paling hulu
-
-VPS memiliki tepat satu system cron:
-
-```cron
-* * * * * <app-user> cd <project-path> && <php-binary> artisan schedule:run
-```
-
-Laravel Scheduler mendaftarkan:
-
-| Frekuensi | Command | Fungsi |
+| Navigation | Resource | Tanggung jawab |
 | --- | --- | --- |
-| Setiap menit | `jobs:dispatch-due` | Membentuk Run untuk Schedule due |
-| Setiap menit | `jobs:reconcile-queued` | Memulihkan Run tanpa payload queue |
-| Setiap 5 menit | `horizon:snapshot` | Menyimpan snapshot metrics Horizon |
-| 02:30 setiap hari | `telescope:prune --hours=168` | Retensi Telescope |
-| 03:00 setiap hari | `cron:purge-runs` | Retensi Run terminal |
+| Dashboard | Widgets | Health, counts, lag, waiting Run |
+| Insights / Client job summary | ClientSummaryResource | Coverage assignment/timing |
+| Master data / Clients | ClientResource | Target dan credential |
+| Master data / Task templates | TaskTemplateResource | Request canonical |
+| Operations / Schedules | ScheduleResource | Assignment dan timing |
+| Operations / Execution logs | RunResource | Outcome dan lifecycle Run |
+| System / User management | UserResource | Akun/role |
+| System / Audit history | AuditLogResource | Jejak perubahan |
+| System / Telescope | AdminPanelProvider | Diagnostics admin |
+| System / Horizon | Horizon provider | Queue-only diagnostics |
+| Help / User guide | UserGuide page | Renderer Markdown read-only |
 
-Setiap command memakai Laravel `withoutOverlapping` agar invocation sebelumnya
-tidak bertumpuk.
+## 8. Configuration workflow
 
-### 9.2 Pemilihan Schedule due
-
-`DueScheduleDispatcher` melakukan:
-
-1. membulatkan waktu kerja ke awal menit;
-2. memulihkan Run `running` yang melewati execution deadline;
-3. mencari Schedule enabled dengan `next_run_at <= sekarang`;
-4. hanya mengambil Schedule dengan Client dan Task Template aktif;
-5. memproses setiap Schedule dalam transaction terpisah;
-6. melakukan row lock pada Schedule;
-7. menghitung occurrence terbaru yang seharusnya berjalan;
-8. menghitung `next_run_at` berikutnya dari waktu sekarang;
-9. membuat Run `queued` atau `skipped`;
-10. commit transaction;
-11. memublikasikan `ExecuteRun` ke Redis setelah commit.
-
-### 9.3 Kebijakan downtime
-
-Jika dispatcher berhenti selama beberapa waktu, sistem hanya membuat occurrence
-terbaru yang due saat kembali hidup. Sistem tidak membuat seluruh backlog yang
-terlewat. `next_run_at` berikutnya dihitung dari waktu sekarang.
-
-Kebijakan ini mencegah ratusan request lama membanjiri endpoint Client setelah
-downtime.
-
-### 9.4 Materialization idempotency
-
-Untuk trigger schedule, sistem membuat key:
-
-```text
-SHA-256(schedule ID + scheduled_for UTC hingga resolusi menit)
+```mermaid
+flowchart TD
+    A[Create/verify Client] --> B[Create/verify Task Template]
+    B --> C[Assign as paused Schedule]
+    C --> D[Resolve Inspect request]
+    D --> E{Valid configuration?}
+    E -- No --> A
+    E -- Yes --> F[Manual Run]
+    F --> G[Pending or Queued]
+    G --> H[One HTTP attempt]
+    H --> I[Review result and business effect]
+    I --> J{Approved?}
+    J -- No --> K[Fix and retest]
+    K --> D
+    J -- Yes --> L[Resume pilot]
+    L --> M[Observe full cycles]
+    M --> N[Expand gradually]
 ```
 
-Kolom `materialization_key` unik di MySQL. Jika dua invocation mencoba
-membentuk occurrence yang sama, hanya satu Run yang menjadi sumber eksekusi.
+Assignment massal bersifat idempotent: pasangan existing tidak dibuat ulang dan
+timing/state lama tidak diubah diam-diam. Assignment baru seharusnya paused.
 
-## 10. Transaction boundary MySQL ke Redis
+## 9. Scheduling workflow
 
-MySQL dan Redis tidak berada dalam distributed transaction yang sama. Karena
-itu publish dilakukan dengan pola berikut:
+### 9.1 Scheduler registry
 
-```text
-BEGIN MySQL transaction
-  lock Schedule
-  advance next_run_at
-  insert Run(status=queued, queue_job_id=null)
-COMMIT MySQL transaction
-
-push ExecuteRun(run_id) ke Redis
-update Run.queue_job_id dengan Redis job UUID
-```
-
-Publish tidak dilakukan sebelum commit karena worker Redis dapat mengambil job
-dengan sangat cepat. Jika worker melihat Run yang belum committed, job dapat
-menjadi no-op atau gagal ditemukan.
-
-Pola setelah commit mempunyai celah lain: process dapat crash setelah commit
-tetapi sebelum Redis push atau sebelum queue job ID disimpan. Celah ini ditutup
-oleh `jobs:reconcile-queued`.
-
-Reconciler mencari:
-
-```text
-status = queued
-queue_job_id IS NULL
-queued_at lebih lama dari satu menit
-```
-
-Kemudian Run dipublikasikan kembali ke queue. Batas satu menit mencegah
-reconciler terlalu cepat bersaing dengan proses publish normal.
-
-## 11. Redis Queue dan Horizon workflow
-
-```text
-RunDispatcher
-    |
-    | push ExecuteRun(run_id), queue=default
-    v
-Redis DB 2
-    |
-    v
-Horizon supervisor-1
-    |
-    | auto balance 2..10 worker
-    v
-ExecuteRun::handle
-    |
-    v
-RunWorker::process(run_id)
-```
-
-Setiap `ExecuteRun` memiliki tag:
-
-```text
-run:<run_id>
-```
-
-Tag memudahkan pencarian job tertentu pada Horizon.
-
-Horizon DB 0 menyimpan data monitoring. Payload queue tetap berada di DB 2.
-Horizon metrics bukan pengganti histori bisnis; histori authoritative tetap
-berada pada tabel `runs`.
-
-## 12. Workflow worker
-
-`RunWorker` menjalankan langkah berikut:
-
-1. mengambil Run beserta Schedule, Client, dan Task Template;
-2. berhenti sebagai no-op jika Run tidak ada, sudah terminal, atau sudah running;
-3. menandai skipped jika relasi domain sudah tidak ada;
-4. melakukan atomic claim `queued -> running`;
-5. mengisi `started_at`, execution deadline, dan worker identity;
-6. melakukan atomic claim overlap slot bila `prevent_overlap=true`;
-7. memeriksa ulang status Client, Task Template, dan Schedule;
-8. memilih executor berdasarkan tipe Task Template;
-9. resolve URL, placeholder, headers, authorization, body, dan timeout;
-10. mengirim tepat satu HTTP request;
-11. menyimpan status, HTTP status, duration, response excerpt, atau error;
-12. melepaskan overlap slot pada blok `finally`.
-
-Atomic claim menggunakan update bersyarat:
-
-```text
-UPDATE runs
-SET status = running
-WHERE id = <run_id> AND status = queued
-```
-
-Jika payload Redis terduplikasi, hanya worker pertama yang dapat mengubah status
-dari queued menjadi running. Worker berikutnya menjadi no-op.
-
-## 13. Workflow HTTP executor
-
-### 13.1 Resolve request
-
-URL dibentuk dari:
-
-```text
-Task Template config.base_url atau Client.base_url
-        +
-Task Template config.path
-```
-
-Kemudian placeholder diganti dengan nilai Client dan Run.
-
-Authorization ditambahkan otomatis:
-
-| Auth type | Header |
-| --- | --- |
-| Basic | `Basic base64(username:secret)` |
-| Bearer | `Bearer <secret>` |
-| None | Tidak ada Authorization header |
-
-Headers tambahan dan body berasal dari Task Template. Body array dikonversi
-menjadi JSON.
-
-### 13.2 Execute request
-
-HTTP executor mengatur:
-
-- default `Accept: application/json`;
-- default `Content-Type: application/json`;
-- connect timeout dari template;
-- request timeout dari template;
-- satu HTTP attempt;
-- response excerpt maksimal 2000 karakter.
-
-Respons HTTP 2xx dianggap sukses. Respons non-2xx, connection error, timeout,
-atau exception dianggap gagal.
-
-### 13.3 Penyimpanan hasil
-
-Hasil ditulis ke Run:
-
-```text
-status
-http_status
-duration_ms
-response_excerpt
-error_message
-finished_at
-```
-
-Secret Client di-redact dari response excerpt dan error sebelum data disimpan.
-
-## 14. Run state machine
-
-```text
-                         +----------------+
-                         |                |
-                         v                |
-queued -------> running -------> succeeded
-  |                |
-  |                +-----------> failed
-  |
-  +----------------------------> cancelled
-  |
-  +----------------------------> skipped
-
-failed -------- manual retry --------> queued (Run baru)
-```
-
-Arti status:
-
-| Status | Makna |
-| --- | --- |
-| `queued` | Run tercatat dan menunggu worker |
-| `running` | Worker sudah melakukan atomic claim |
-| `succeeded` | Endpoint menghasilkan HTTP 2xx |
-| `failed` | HTTP non-2xx, timeout, connection error, atau execution error |
-| `skipped` | Tidak dieksekusi karena overlap, pause, atau relasi tidak tersedia |
-| `cancelled` | Dibatalkan ketika masih queued |
-
-## 15. Trigger otomatis, manual, dan retry
-
-### 15.1 Schedule trigger
-
-Trigger `schedule` hanya dieksekusi jika Schedule, Client, dan Task Template masih
-aktif ketika worker mulai. Jika dipause setelah payload masuk queue, Run menjadi
-skipped tanpa memanggil endpoint.
-
-### 15.2 Run now
-
-Run now membuat Run baru dengan trigger `manual`. Manual Run tetap mensyaratkan
-Client dan Task Template aktif, tetapi boleh berjalan ketika Schedule paused.
-Overlap guard tetap berlaku.
-
-### 15.3 Retry
-
-Retry hanya diperbolehkan untuk Run `failed`. Retry membuat Run baru dengan:
-
-```text
-trigger = retry
-source_run_id = ID Run gagal
-```
-
-Run lama tidak diubah sehingga histori keputusan operator tetap terlihat.
-
-### 15.4 Cancel queued Run
-
-Cancel hanya berlaku ketika Run masih `queued`:
-
-1. Run di-lock dalam transaction MySQL;
-2. payload pending dicari dan dihapus dari Redis Queue;
-3. status Run diubah menjadi `cancelled`;
-4. tindakan dicatat ke Audit Log.
-
-Ada race condition alami jika worker mengambil payload tepat sebelum cancel.
-Status Run tetap menjadi pengaman: worker hanya boleh claim Run yang masih
-`queued`. Payload yang sudah reserved tetapi Run telah cancelled akan menjadi
-no-op.
-
-## 16. Overlap protection
-
-`prevent_overlap=true` adalah pengganti `flock -n` pada sistem legacy.
-
-Sistem menggunakan dua pemeriksaan:
-
-1. dispatcher melihat `schedules.running_run_id` dan dapat membuat occurrence
-   `skipped` sebelum masuk queue;
-2. worker melakukan atomic claim pada `running_run_id` sebelum HTTP execution.
-
-Worker kedua tidak mendapat slot jika Schedule yang sama masih memiliki Run
-aktif. Occurrence tersebut dicatat `skipped` dengan alasan bahwa Run sebelumnya
-masih berjalan.
-
-Jika worker mati dan tidak membersihkan slot, dispatcher memulihkan Run yang
-melewati `execution_deadline_at`, menandainya failed, lalu melepas slot.
-
-## 17. Timezone dan representasi waktu
-
-Kebijakan waktu:
-
-```dotenv
-APP_TIMEZONE=Asia/Jakarta
-DB_TIMEZONE=+07:00
-CRON_DEFAULT_TIMEZONE=Asia/Jakarta
-```
-
-Prinsipnya:
-
-- cron expression dihitung dalam timezone milik Schedule;
-- default timezone Schedule adalah Asia/Jakarta;
-- waktu occurrence mewakili instant yang sama secara konsisten;
-- `{{run.scheduled_for}}` dikirim ke endpoint sebagai ISO-8601 UTC;
-- UI menampilkan waktu operasional menggunakan Asia/Jakarta;
-- MySQL session diselaraskan ke `+07:00` agar pembacaan dan penulisan timestamp
-  konsisten dengan aplikasi.
-
-Migration normalisasi timezone hanya dipakai untuk memperbaiki timestamp lama
-yang sebelumnya ditulis saat session database dan Laravel tidak selaras.
-
-## 18. Failure semantics
-
-### 18.1 Business execution failure
-
-Contoh:
-
-- HTTP 400, 401, 403, 404, 422, atau 500;
-- DNS atau TLS error;
-- connection timeout;
-- request timeout;
-- request tidak dapat di-resolve.
-
-Hasilnya:
-
-- Run ditandai `failed` di MySQL;
-- error dan response excerpt disimpan setelah redaction;
-- operator dapat membuat Retry baru;
-- job queue dapat terlihat completed di Horizon karena worker berhasil menangani
-  kegagalan bisnis dan menyimpan hasilnya.
-
-Karena itu, keberhasilan job di Horizon tidak selalu berarti endpoint sukses.
-Status bisnis authoritative harus dilihat pada Execution Logs atau tabel `runs`.
-
-### 18.2 Queue infrastructure failure
-
-Contoh:
-
-- Redis tidak dapat dihubungi;
-- Horizon mati;
-- payload tidak dapat di-deserialize;
-- exception keluar dari job handler;
-- worker dihentikan paksa.
-
-Hasilnya dapat terlihat pada:
-
-- Horizon dashboard;
-- Supervisor status dan log;
-- Laravel log;
-- Telescope job/exception entry;
-- tabel `failed_jobs` untuk queue job yang benar-benar gagal pada level Laravel.
-
-### 18.3 Failure matrix
-
-| Failure | Dampak | Recovery |
+| Frekuensi | Command | Kondisi |
 | --- | --- | --- |
-| System cron mati | Tidak ada due dispatch baru | Hidupkan cron; occurrence terbaru diproses |
-| Dispatcher crash sebelum commit | Tidak ada Run committed | Menit berikutnya akan mencoba lagi |
-| Crash setelah commit sebelum Redis push | Run queued tanpa payload | `jobs:reconcile-queued` memublikasikan ulang |
-| Horizon mati | Payload menunggu di Redis | Supervisor restart Horizon |
-| Worker mati saat HTTP call | Run sementara tetap running | Deadline recovery menandai failed dan melepas slot |
-| Redis restart | Queue berhenti sementara | Redis memuat AOF lalu Horizon melanjutkan |
-| Redis penuh | Push baru ditolak | `noeviction`, log error, reconciler mencoba lagi |
-| HTTP non-2xx | Run failed | Operator review lalu Retry manual |
-| Client/Template/Schedule dipause | Scheduled Run skipped | Resume bila memang perlu |
-| Duplicate payload | Worker kedua tidak dapat claim | Atomic Run state menjadikannya no-op |
-| Previous Run aktif | Occurrence baru skipped | Tidak ada backlog retry otomatis |
+| Setiap menit | `jobs:dispatch-due` | Selalu |
+| Setiap menit | `jobs:reconcile-queued` | Driver queue |
+| Setiap 5 menit | `horizon:snapshot` | Driver queue |
+| 02:30 | `telescope:prune --hours=168` | Harian |
+| 03:00 | `cron:purge-runs` | Harian |
 
-## 19. Reliability boundaries
+System cron hanya memanggil `artisan schedule:run` setiap menit.
 
-Redis dan Horizon meningkatkan operational reliability melalui antrean cepat,
-autoscaling, process supervision, metrics, dan diagnosis yang lebih jelas.
-Namun batas berikut tetap ada:
+### 9.2 Dispatcher sequence
 
-- Redis pada VPS yang sama masih menjadi single point of failure bersama
-  aplikasi dan MySQL;
-- AOF `everysec` secara teori dapat kehilangan perubahan paling akhir ketika
-  host mati mendadak;
-- reconciler otomatis hanya mengambil Run queued dengan `queue_job_id` null;
-- kehilangan total Redis setelah job ID tersimpan membutuhkan prosedur recovery
-  terkontrol;
-- tidak ada automatic HTTP retry untuk mencegah efek bisnis ganda;
-- exactly-once delivery tidak dapat dijamin pada sistem terdistribusi, sehingga
-  endpoint tujuan idealnya idempotent.
+```mermaid
+sequenceDiagram
+    participant Cron as system cron
+    participant LS as Laravel Scheduler
+    participant D as DueScheduleDispatcher
+    participant DB as MySQL
+    participant Q as Redis compatibility
 
-Untuk high availability yang lebih tinggi, Redis dan MySQL perlu memakai managed
-service atau replication/failover di host terpisah.
+    Cron->>LS: artisan schedule:run
+    LS->>D: jobs:dispatch-due
+    D->>DB: heartbeat + recover expired running
+    D->>DB: select due schedules
+    loop each schedule
+        D->>DB: transaction + row lock
+        D->>DB: recompute occurrence and next_run_at
+        alt duplicate materialization key
+            D-->>D: no-op
+        else direct inside window
+            D->>DB: insert Run pending/direct
+        else direct window missed
+            D->>DB: insert Run skipped
+        else queue mode
+            D->>DB: insert Run queued/queue
+            D->>Q: publish after commit
+        end
+    end
+```
 
-## 20. Observability
+Dispatcher memilih occurrence terbaru, bukan replay seluruh downtime. Direct
+yang terlambat menjadi `skipped` dan tidak di-catch-up.
 
-### 20.1 Dashboard aplikasi
+## 10. Direct execution workflow
 
-Dashboard Filament menampilkan:
+### 10.1 Admission dan rolling pool
 
-- jumlah Schedule enabled;
-- success rate 24 jam;
-- Run queued;
-- Run running;
-- occurrence queued paling lama;
-- Client Job Summary dan assignment yang belum lengkap.
+```mermaid
+sequenceDiagram
+    participant W as jobs:work-direct
+    participant L as DB lease
+    participant R as runs
+    participant X as Lifecycle
+    participant P as cURL pool
+    participant C as Client
 
-Runs table melakukan polling setiap 15 detik dan dapat difilter berdasarkan
-Client, Task Template, status, trigger, dan periode.
+    W->>L: acquire direct lease
+    alt owned elsewhere
+        L-->>W: standby
+    else acquired
+        loop until stop
+            W->>L: heartbeat + metrics
+            W->>R: expire pending / recover deadline
+            W->>R: fetch eligible IDs up to free slots
+            W->>X: atomic claim pending -> running
+            X->>X: validate window, state, config, overlap
+            X->>R: started_at, lag, deadline, slot
+            W->>P: send async request
+            P->>C: HTTP once
+            C-->>P: response/error
+            P-->>W: settled
+            W->>X: terminal result + release slot
+        end
+        W->>L: release lease
+    end
+```
 
-### 20.2 Horizon
+Pool mengisi slot yang selesai, termasuk Run now yang datang ketika request
+lain aktif. Lifecycle memeriksa driver/status, start window, Client, Template,
+Schedule otomatis, request resolution, dan overlap. Manual Run boleh berasal
+dari Schedule paused, tetapi Client dan Template tetap harus aktif.
 
-Horizon dipakai untuk:
+### 10.2 Bounded response
 
-- status master dan supervisor;
-- worker count;
-- queue throughput;
-- wait time;
-- recent, pending, completed, dan failed queue jobs;
-- pencarian tag `run:<id>`;
-- balancing worker otomatis.
+Response dikonsumsi sampai selesai/timeout, tetapi hanya prefix maksimum
+`CRON_DIRECT_RESPONSE_MAX_BYTES` disimpan dalam memori. Excerpt DB dipotong oleh
+`CRON_RESPONSE_EXCERPT_LENGTH` setelah redaction. Batas memori bukan bandwidth.
 
-Horizon menyimpan metrics snapshot setiap lima menit. Dashboard hanya boleh
-diakses Administrator aktif.
+Redirect tidak diikuti. HTTP 2xx sukses; 3xx/4xx/5xx failed. JSON scalar
+`message`/`error` dapat menjadi pesan hasil.
 
-### 20.3 Telescope
+### 10.3 Shutdown dan crash
 
-Telescope merekam area yang relevan:
+- **SIGTERM/SIGINT**: stop admission, drain in-flight, release lease.
+- **SIGKILL/crash**: outcome ambigu; tunggu lease/deadline, failed tanpa resend.
+- **Persistence failure**: stop admission; callback lain tetap diproses;
+  unresolved running menunggu recovery.
 
-- application request;
-- outbound client request;
-- queue job;
-- exception;
-- error log;
-- Artisan command;
-- scheduled task.
+## 11. Manual Run, cancel, dan retry
 
-Parameter dan header sensitif disembunyikan. Telescope menggunakan MySQL dan
-dipangkas setiap hari dengan retention 168 jam.
+```mermaid
+flowchart LR
+    RN[Run now] --> D{Driver global}
+    D -- direct --> P[pending]
+    D -- queue --> Q[queued]
+    P --> R[running]
+    Q --> R
+    P --> C[cancelled before claim]
+    Q --> C
+    R --> S[succeeded]
+    R --> F[failed]
+    R --> K[skipped]
+    F -. queue only .-> RT[Retry creates new queued Run]
+    F -. direct .-> NR[Deliberate Run now]
+```
 
-### 20.4 Log
+Cancel memakai row lock; queue juga mencoba menghapus payload. Race setelah
+claim ditolak. Direct Retry tidak tersedia agar failure/outcome ambigu tidak
+terkirim ulang tanpa keputusan operator.
 
-| Log | Kegunaan |
+## 12. Run state machines
+
+### 12.1 Direct
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> running: atomic claim + validation
+    pending --> cancelled: operator before claim
+    pending --> skipped: missed window / invalid state
+    running --> succeeded: HTTP 2xx
+    running --> failed: non-2xx / transport / recovery
+    running --> skipped: validation before send
+    succeeded --> [*]
+    failed --> [*]
+    skipped --> [*]
+    cancelled --> [*]
+```
+
+### 12.2 Queue compatibility
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> running: worker claim
+    queued --> cancelled: before claim
+    queued --> skipped: runtime validation
+    running --> succeeded
+    running --> failed
+    running --> skipped
+    failed --> queued: Retry creates another Run
+```
+
+Terminal result hanya mengubah Run yang masih `running`; callback terlambat
+setelah recovery menjadi no-op.
+
+## 13. Concurrency dan capacity
+
+```text
+N = Run dalam burst
+C = concurrency global
+D = durasi endpoint representatif
+W = start window
+
+last_start ≈ (ceil(N / C) - 1) × D
+syarat kasar: last_start < W
+```
+
+Model belum memasukkan DB latency, DNS/TLS, variasi endpoint, callback, dan
+contention. Gunakan p95/p99 production. Validasi fixture 123×5 detik C=20 dan
+246×5 detik C=40 ada di [Direct HTTP Validation](direct-http-validation.md) dan
+bukan jaminan production.
+
+## 14. Idempotency dan overlap
+
+| Boundary | Mekanisme |
 | --- | --- |
-| `storage/logs/laravel.log` | Exception dan error aplikasi |
-| Horizon log | Lifecycle master dan worker |
-| Scheduler log | Output `artisan schedule:run` |
-| Web server/PHP-FPM log | Error HTTP ingress dan PHP runtime |
-| Execution Logs | Hasil bisnis setiap HTTP execution |
-| Audit Log | Perubahan konfigurasi oleh user |
+| Occurrence terjadwal ganda | Unique `materialization_key` |
+| Claim oleh dua worker | Conditional status update |
+| Satu active Run per Schedule | Atomic `running_run_id` |
+| Callback terlambat | Update hanya saat running |
+| Duplicate queue payload | Claim hanya dari queued |
+| Crash direct | Deadline recovery tanpa resend |
 
-## 21. Troubleshooting decision tree
+Endpoint business idempotency tetap tanggung jawab pemilik endpoint.
+
+## 15. Failure model
+
+| Failure | Outcome | Recovery/operasi |
+| --- | --- | --- |
+| HTTP 4xx/5xx | Failed | Perbaiki; no auto retry |
+| DNS/TLS/connect/timeout | Failed | Periksa transport/endpoint |
+| Direct executor offline | Pending menua lalu skipped | Pulihkan Supervisor; tidak replay |
+| Dispatcher offline | Tidak ada occurrence baru | Pulihkan system cron |
+| Pool saturated | Start lag naik | Ukur latency/capacity atau kurangi scope |
+| Previous Run aktif | Skipped | Tunggu Run lama |
+| State/config invalid | Skip/fail sebelum send | Perbaiki state/config |
+| SIGTERM | Drain | Supervisor restart normal |
+| SIGKILL | Ambigu sampai deadline | Failed tanpa resend |
+| DB persistence gagal | Admission berhenti | Pulihkan DB dan recovery |
+| Queue publish gap | Queued tanpa payload | `jobs:reconcile-queued` |
+| Redis/Horizon mati | Queue backlog | Queue runbook |
+
+## 16. Security design
+
+### 16.1 Authorization
+
+Administrator mengelola master/configuration; Operator menjalankan operasi
+harian; Viewer read-only. User nonaktif tidak dapat membuka panel.
+
+### 16.2 Secret lifecycle
+
+Credential Client disimpan plaintext/as-entered agar database dapat dipindahkan
+tanpa `APP_KEY`. Karena itu DB/dump/backup adalah secret material. Model
+menyembunyikan field, preview/result/audit me-redact, dan direct transport tidak
+merekam outbound request ke Telescope. Redaction tetap bukan pengganti kontrol
+akses.
+
+### 16.3 Infrastructure
+
+- HTTPS production; service process non-root.
+- MySQL/Redis hanya localhost/private network.
+- `.env`, logs, storage, dan backup berizin terbatas.
+- Reverse proxy hanya dipercaya dari CIDR terkonfigurasi.
+
+## 17. Observability
+
+Execution logs menyimpan hasil bisnis; Audit history menyimpan perubahan.
+`jobs:direct-status --json` dan Dashboard menyediakan heartbeat, counts,
+active/capacity, saturation, p50/p95/p99 lag/duration, oldest pending, expired,
+failed rate, dan missed window.
+
+| Sumber | Isi |
+| --- | --- |
+| Laravel log | Exception aplikasi/executor/import |
+| Supervisor log | Lifecycle daemon |
+| Scheduler log | system cron/dispatcher |
+| Web server/PHP-FPM | Upstream/fatal |
+| Telescope | Web request, command, exception |
+| Horizon | Queue compatibility |
+| OS metrics | CPU, RSS, FD/socket, disk, network |
+
+External monitor harus mengecek host/process/DB/HTTPS dari luar VPS.
+
+## 18. Deployment dan rollback
+
+```mermaid
+flowchart TD
+    A[Deploy with queue driver] --> B[Backup + migrate]
+    B --> C[Install direct Supervisor standby]
+    C --> D[Pause pilot and drain queue]
+    D --> E[Prevent duplicate legacy execution]
+    E --> F[Set global driver direct + rebuild config]
+    F --> G[Restart daemon / PHP-FPM]
+    G --> H[Run now smoke test]
+    H --> I[Resume pilot]
+    I --> J[Monitor peak + soak]
+    J --> K[Expand gradually]
+```
+
+Rollback: Pause pilot, SIGTERM direct dan tunggu drain, ubah driver queue,
+rebuild config, start Horizon, lalu Resume untuk occurrence berikutnya. Jangan
+replay direct failure/ambiguous Run. Migration compatibility tidak perlu di-down.
+
+## 19. Configuration reference
+
+| Variable | Default | Arti |
+| --- | ---: | --- |
+| `CRON_EXECUTION_DRIVER` | `queue` | Global `queue`/`direct` |
+| `CRON_DIRECT_CONCURRENCY` | 20 | Active HTTP maksimum |
+| `CRON_DIRECT_BATCH_LIMIT` | 250 | Kandidat admission/once |
+| `CRON_DIRECT_POLL_INTERVAL_MS` | 500 | Poll/recovery |
+| `CRON_DIRECT_IDLE_DELAY_MS` | 500 | Delay pool kosong |
+| `CRON_DIRECT_START_WINDOW_SEC` | 55 | Batas mulai, wajib <60 |
+| `CRON_DIRECT_HEARTBEAT_SEC` | 15 | Lease heartbeat |
+| `CRON_DIRECT_RESPONSE_MAX_BYTES` | 65536 | Prefix body memory |
+| `CRON_RESPONSE_EXCERPT_LENGTH` | 2000 | Excerpt DB |
+| `CRON_EXECUTION_MARGIN_SEC` | 60 | Deadline margin |
+| `CRON_RUNS_RETENTION_DAYS` | 90 | Retensi terminal Run |
+
+Default Task: connect timeout 10 detik dan request timeout 60 detik.
+
+## 20. Retention dan backup
+
+`cron:purge-runs` menghapus terminal Run melewati retention; waiting/running
+tidak dihapus. Backup mencakup MySQL, `.env` terpisah, avatar storage,
+web/cron/Supervisor/TLS config, dan release Git. Restore drill harus memeriksa
+foreign keys, timestamps, credential, serta `executor_states`.
+
+## 21. Testing strategy
+
+| Layer | Fokus |
+| --- | --- |
+| Unit | Request resolution, redaction, DTO |
+| Feature | Dispatcher, lifecycle, pool, UI policy/action |
+| Real HTTP integration | timeout, disconnect, non-2xx, redirect, large body |
+| Process drill | SIGTERM, SIGKILL, lease standby |
+| Capacity opt-in | N × delay × concurrency |
+| Static/build | Pint, Vite, `git diff --check` |
+
+Hasil terdokumentasi: 120 tests, 447 assertions, satu capacity test opt-in
+skipped pada suite normal. Test harus menetapkan `CRON_EXECUTION_DRIVER` secara
+eksplisit agar tidak bergantung pada `.env` host.
+
+## 22. Source code map
 
 ```text
-Run tidak dibuat?
-  -> periksa system cron, schedule:list, scheduler log, next_run_at
-
-Run queued dan queue_job_id null?
-  -> periksa Redis connectivity dan jobs:reconcile-queued
-
-Run queued dan queue_job_id terisi?
-  -> periksa redis-cli ping, Horizon status, Supervisor, queue wait
-
-Run lama di running?
-  -> periksa Horizon/Laravel log, HTTP timeout, execution_deadline_at
-
-Run failed dengan HTTP status?
-  -> periksa endpoint, credential, response excerpt
-
-Run failed tanpa HTTP status?
-  -> periksa DNS, TLS, network, timeout, resolved request
-
-Run skipped?
-  -> periksa pause state, active state, atau overlap slot
-```
-
-Command diagnosis utama:
-
-```bash
-redis-cli ping
-sudo supervisorctl status opsifin-scheduler-horizon
-php artisan horizon:status
-php artisan schedule:list
-php artisan queue:failed
-php artisan jobs:reconcile-queued
-```
-
-## 22. Security model
-
-### 22.1 Application access
-
-- hanya user aktif dapat mengakses panel;
-- Administrator mengelola master data dan user;
-- Operator hanya menjalankan operasi scheduler;
-- Viewer hanya membaca;
-- Horizon dan Telescope hanya untuk Administrator;
-- production wajib menggunakan HTTPS.
-
-### 22.2 Secret handling
-
-- credential Client disembunyikan dari serialisasi model;
-- Authorization header dibentuk saat runtime;
-- preview request menyamarkan secret;
-- response dan error di-redact sebelum disimpan;
-- Audit Log meredact field sensitif;
-- Telescope menyembunyikan request parameter, header, dan response field
-  sensitif;
-- database dump, backup, dan `.env` harus dianggap secret.
-
-### 22.3 Infrastructure
-
-- Redis bind ke localhost atau private network;
-- port 6379 tidak dipublikasikan ke internet;
-- MySQL tidak dipublikasikan ke internet;
-- worker dan scheduler berjalan sebagai app user, bukan root;
-- `.env` tidak disimpan di repository;
-- backup disimpan di luar web root;
-- log menggunakan rotation dan retention.
-
-## 23. Retention
-
-Run terminal lebih lama dari `CRON_RUNS_RETENTION_DAYS`, default 90 hari,
-dihapus setiap pukul 03:00 dalam chunk. Run queued dan running tidak pernah
-dihapus oleh retention job.
-
-Telescope entries dipangkas menjadi sekitar tujuh hari melalui:
-
-```bash
-php artisan telescope:prune --hours=168
-```
-
-Horizon recent/completed jobs disimpan 60 menit dan failed/monitored jobs disimpan
-10080 menit pada metadata Redis sesuai konfigurasi Horizon.
-
-## 24. Deployment lifecycle
-
-### 24.1 Initial Redis cutover
-
-Urutan aman:
-
-1. install dan harden Redis;
-2. backup MySQL, `.env`, dan Supervisor configuration;
-3. nonaktifkan cron aplikasi sementara;
-4. drain database queue lama;
-5. hentikan database worker;
-6. deploy release Redis/Horizon;
-7. isi `.env` Redis;
-8. tes koneksi Redis dari Laravel;
-9. jalankan migration;
-10. install Supervisor Horizon;
-11. jalankan reconciler;
-12. aktifkan kembali scheduler;
-13. smoke test satu endpoint aman;
-14. pantau minimal dua siklus.
-
-Detail command tersedia di
-[redis-horizon-cutover-vps.md](redis-horizon-cutover-vps.md).
-
-### 24.2 Release berikutnya
-
-```text
-backup
-  -> checkout release
-  -> composer install
-  -> build asset
-  -> migrate --force
-  -> optimize
-  -> horizon:terminate
-  -> Supervisor restart master
-  -> smoke test
-```
-
-`horizon:terminate` digunakan agar worker lama selesai secara graceful dan
-Supervisor menjalankan master baru dengan source code release terbaru.
-
-## 25. Capacity model
-
-Lima ratus Schedule per hari bukan beban besar secara rata-rata:
-
-```text
-500 / 24 jam = sekitar 20,8 per jam
-500 / 1440 menit = sekitar 0,35 per menit
-```
-
-Faktor yang lebih penting daripada total harian:
-
-- berapa banyak Schedule jatuh pada menit yang sama;
-- rata-rata dan persentil durasi HTTP;
-- kapasitas endpoint Client;
-- RAM per PHP worker;
-- timeout;
-- pertumbuhan Run history;
-- frekuensi error dan retry manual.
-
-Horizon 2 sampai 10 worker memberi kapasitas burst, tetapi maksimum worker harus
-disesuaikan dengan RAM VPS dan kemampuan endpoint tujuan. Lebih banyak worker
-tidak selalu lebih baik jika endpoint Client memiliki rate limit atau locking.
-
-## 26. Testing strategy
-
-Test suite mencakup:
-
-- admin panel dan authorization;
-- Client credential storage;
-- default Schedule provisioning;
-- Schedule management;
-- due dispatcher dan downtime semantics;
-- overlap behavior;
-- Run Worker success, failure, skip, dan recovery;
-- HTTP executor dan redaction;
-- queued Run cancellation;
-- reconciler;
-- Horizon access dan queue invariant;
-- Telescope access;
-- legacy import dan parser;
-- retention;
-- trusted proxy;
-- health route.
-
-Command verifikasi:
-
-```bash
-php artisan test --compact
-php vendor/bin/pint --test
-CACHE_STORE=array php artisan schedule:list
-npm run build
-composer validate --strict
-composer audit --locked --no-interaction
-```
-
-## 27. Operational checklist harian
-
-- pastikan Redis menjawab `PONG`;
-- pastikan Supervisor Horizon `RUNNING`;
-- pastikan `artisan horizon:status` menyatakan aktif;
-- periksa Run queued paling lama;
-- periksa Run running yang melewati deadline;
-- periksa failure rate Execution Logs;
-- periksa `queue:failed` untuk infrastructure failure;
-- periksa CPU, RAM, disk, inode, dan pertumbuhan log;
-- pastikan backup MySQL terbaru tersedia;
-- pastikan Redis AOF aktif dan tidak mengalami eviction.
-
-## 28. Source code map
-
-### Scheduling
-
-```text
+# Entry points
 routes/console.php
-app/Console/Commands/DispatchDueJobsCommand.php
-app/Console/Commands/ReconcileQueuedRunsCommand.php
-app/Services/Scheduling/NextRunCalculator.php
-app/Services/Scheduling/DueScheduleDispatcher.php
-app/Services/Scheduling/RunDispatcher.php
-app/Services/Scheduling/RunWorker.php
-app/Services/Scheduling/QueuedRunCanceller.php
-app/Jobs/ExecuteRun.php
+app/Console/Commands/{DispatchDueJobsCommand,WorkDirectRunsCommand,DirectExecutionStatusCommand}.php
+
+# Scheduling dan lifecycle
+app/Services/Scheduling/{DueScheduleDispatcher,RunDispatcher,RunExecutionLifecycle}.php
+app/Services/Scheduling/{DirectPoolExecutor,DirectExecutorLease,DirectExecutionHealth}.php
+app/Services/Scheduling/{QueuedRunCanceller,RunWorker}.php
+
+# HTTP
+app/Services/Execution/{HttpExecutor,DirectHttpTransport,BoundedResponseStream}.php
+app/Services/Execution/Dto/{ResolvedRequest,RunExecution}.php
+
+# Domain/UI
+app/Models/{Client,TaskTemplate,Schedule,Run,AuditLog}.php
+app/Enums/{RunStatus,RunTrigger,UserRole}.php
+app/Policies/*.php
+app/Filament/Resources/**
+app/Filament/Widgets/**
+
+# Config/deployment
+config/opsifin_cron.php
+database/migrations/2026_09_09_000001_prepare_runs_for_direct_execution.php
+deploy/{vps,aapanel}/supervisor-direct-executor.conf.template
 ```
 
-### HTTP execution
+## 23. Definition of healthy
 
-```text
-app/Services/Execution/ExecutorManager.php
-app/Services/Execution/HttpExecutor.php
-app/Services/Execution/Dto/ResolvedRequest.php
-app/Services/Execution/Dto/ExecutionResult.php
-```
+Direct sehat bila system cron berjalan tiap menit, executor/dispatcher online,
+slot tidak melebihi capacity, pending tidak melewati window, p95 lag ≤45 detik,
+p99 <60 detik, expired/missed window nol, failure rate sesuai baseline, dan host
+mempunyai headroom.
 
-### Domain
+Queue compatibility sehat bila Redis/Horizon/Supervisor hidup, backlog bergerak,
+reconciler tidak menemukan gap berulang, dan timeout invariant terpenuhi.
 
-```text
-app/Models/Client.php
-app/Models/TaskTemplate.php
-app/Models/Schedule.php
-app/Models/Run.php
-app/Models/User.php
-app/Models/AuditLog.php
-```
+## 24. Keputusan penting
 
-### Redis dan Horizon
+1. Setelah cutover, database adalah source of truth; bukan script legacy.
+2. Schedule import selalu paused.
+3. Satu Run berarti satu attempt.
+4. Manual resend harus disengaja dan memahami efek bisnis.
+5. Concurrency ditetapkan dari latency/resource production.
+6. Queue path dihapus melalui release terpisah setelah soak.
+7. Status Run tidak diubah manual untuk memaksa replay.
 
-```text
-config/database.php
-config/queue.php
-config/horizon.php
-app/Providers/HorizonServiceProvider.php
-deploy/vps/supervisor-worker.conf.template
-```
+## 25. Dokumen terkait
 
-### Observability dan maintenance
-
-```text
-app/Providers/TelescopeServiceProvider.php
-config/telescope.php
-app/Services/Maintenance/RetentionService.php
-app/Console/Commands/CronPurgeRunsCommand.php
-```
-
-### Legacy import
-
-```text
-app/Services/LegacyImport/
-app/Console/Commands/CronImportCommand.php
-app/Console/Commands/CronVerifyImportCommand.php
-app/Console/Commands/CronCutoverStatusCommand.php
-```
-
-### Deployment
-
-```text
-deploy/vps/
-deploy/aapanel/
-docs/deployment-vps.md
-docs/database-migration-vps.md
-docs/redis-horizon-cutover-vps.md
-```
-
-## 29. Configuration reference
-
-Minimal production configuration:
-
-```dotenv
-APP_ENV=production
-APP_DEBUG=false
-APP_TIMEZONE=Asia/Jakarta
-DB_TIMEZONE=+07:00
-
-SESSION_DRIVER=database
-CACHE_STORE=database
-QUEUE_CONNECTION=redis
-QUEUE_FAILED_DRIVER=database-uuids
-
-REDIS_CLIENT=predis
-REDIS_HOST=127.0.0.1
-REDIS_PASSWORD=<secret-atau-null>
-REDIS_PORT=6379
-REDIS_DB=0
-REDIS_QUEUE_DB=2
-REDIS_QUEUE_CONNECTION=queue
-REDIS_QUEUE=default
-REDIS_QUEUE_RETRY_AFTER=2000
-REDIS_QUEUE_BLOCK_FOR=5
-
-HORIZON_NAME="Opsifin Scheduler Production"
-HORIZON_REDIS_CONNECTION=default
-HORIZON_MIN_PROCESSES=2
-HORIZON_MAX_PROCESSES=10
-HORIZON_TIMEOUT=1900
-
-CRON_DEFAULT_TIMEZONE=Asia/Jakarta
-CRON_RUNS_RETENTION_DAYS=90
-CRON_EXECUTION_MARGIN_SEC=60
-```
-
-## 30. Definition of healthy
-
-Sistem dianggap sehat jika seluruh kondisi berikut terpenuhi:
-
-```text
-system cron aktif dan hanya satu
-artisan schedule:list dapat dibaca
-Redis PING = PONG
-Supervisor Horizon = RUNNING
-artisan horizon:status = running
-queued Run bergerak dalam SLA yang disepakati
-tidak ada running Run melewati execution deadline
-failure rate endpoint masih dalam batas normal
-tidak ada error berulang di Laravel/Horizon log
-MySQL backup dan Redis AOF berjalan
-CPU, RAM, disk, dan inode berada dalam batas aman
-```
-
-## 31. Dokumen terkait
-
+- [Panduan pengguna dan module](user-guide.md)
 - [Arsitektur ringkas](architecture.md)
-- [Runbook cutover Redis dan Horizon](redis-horizon-cutover-vps.md)
-- [Deployment production VPS](deployment-vps.md)
-- [Migrasi database existing](database-migration-vps.md)
-- [Operations dan troubleshooting](operations.md)
-- [Panduan pengguna](user-guide.md)
-- [Instalasi development](installation.md)
+- [Direct deployment, operasi, rollback](direct-http-operations.md)
+- [Direct validation](direct-http-validation.md)
+- [Operations runbook](operations.md)
+- [Production deployment](deployment-vps.md)
+- [Development installation](installation.md)
+- [Migration plan](direct-bounded-http-migration-plan.md)
+- [Current handoff](handoff.md)

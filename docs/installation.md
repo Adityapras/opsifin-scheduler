@@ -1,5 +1,11 @@
 # Development Setup — WSL2 dan aaPanel
 
+Untuk direct HTTP, jalankan compatibility migration dan gunakan
+`deploy/aapanel/supervisor-direct-executor.conf.template`. PHP CLI memerlukan
+`curl` dan `pcntl`. Driver default tetap `queue`; aktivasi dan restart ada di
+[runbook direct HTTP](direct-http-operations.md). Langkah Horizon di bawah
+berlaku untuk mode queue selama compatibility window.
+
 aaPanel hanya dipakai sebagai development environment di WSL. Production
 mengikuti [deployment-vps.md](deployment-vps.md) tanpa aaPanel.
 
@@ -224,6 +230,11 @@ Masalah tersebut biasanya routing asset Livewire, bukan tipe field password di
 source form.
 
 ## 11. Supervisor Horizon
+
+> Bagian ini berlaku untuk driver `queue` (compatibility/rollback). Bila
+> `CRON_EXECUTION_DRIVER=direct`, Horizon tidak dipakai — ikuti
+> [runbook aaPanel](runbook-scheduler-aapanel.md) yang memasang
+> `jobs:work-direct` dan satu aaPanel Cron.
 
 Gunakan fitur Supervisor aaPanel atau template
 `deploy/aapanel/supervisor-worker.conf.template`:

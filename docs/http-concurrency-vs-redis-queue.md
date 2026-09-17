@@ -1,5 +1,11 @@
 # Komparasi Direct Concurrent HTTP dan Redis Queue + Horizon
 
+> Arsip analisis sebelum implementasi. Sejak 10 September 2026, compatibility
+> direct HTTP sudah tersedia dengan dispatcher dan executor terpisah. Status
+> terbaru ada di [rencana migrasi](direct-bounded-http-migration-plan.md) dan
+> [hasil validasi](direct-http-validation.md). Perbandingan di bawah tetap
+> merekam alternatif awal, bukan instruksi runtime saat ini.
+
 ## 1. Tujuan dokumen
 
 Dokumen ini membandingkan dua pendekatan eksekusi HTTP job pada Opsifin

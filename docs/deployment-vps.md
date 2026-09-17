@@ -1,5 +1,12 @@
 # Deployment Production ke VPS
 
+Direct HTTP tersedia sebagai driver alternatif selama compatibility window.
+Deploy awal tetap memakai `CRON_EXECUTION_DRIVER=queue`; jalankan migration
+compatibility dan ikuti [cutover serta rollback direct](direct-http-operations.md)
+untuk memakai template `deploy/vps/supervisor-direct-executor.conf.template`.
+Instruksi Horizon/Redis di bawah berlaku untuk queue dan rollback sampai
+production soak selesai.
+
 Panduan ini adalah runbook deployment production resmi Opsifin Scheduler tanpa
 aaPanel. Contoh memakai Ubuntu/Debian, Apache2, PHP 8.4-FPM, MySQL, Redis,
 Supervisor, dan system cron. Instalasi awal boleh memakai IP/forwarder; domain final contoh
@@ -584,6 +591,11 @@ baru; user cukup login kembali. Scheduler dan worker tidak perlu dihentikan
 hanya karena alamat panel berubah.
 
 ## 17. Supervisor Laravel Horizon
+
+> Bagian ini berlaku untuk driver `queue` (compatibility/rollback). Bila
+> `CRON_EXECUTION_DRIVER=direct`, Horizon tidak dipakai — ikuti
+> [runbook VPS](runbook-scheduler-vps.md) yang memasang
+> `jobs:work-direct` dan satu entry `/etc/cron.d`.
 
 Salin template:
 

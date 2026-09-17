@@ -1,5 +1,11 @@
 # Operations Runbook
 
+Jika `CRON_EXECUTION_DRIVER=direct`, gunakan
+[runbook direct HTTP](direct-http-operations.md) dan `jobs:direct-status --json`.
+Direct executor memakai pending Run di database dan Supervisor
+`opsifin-scheduler-direct`. Prosedur queue/Horizon di bawah khusus mode queue
+selama compatibility/rollback window.
+
 Runbook ini untuk production VPS manual. Ganti path dan nama service bila
 berbeda dari template repository.
 

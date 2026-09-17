@@ -18,10 +18,15 @@ class RunDispatcher
         Schedule $schedule,
         Carbon $scheduledFor,
         RunTrigger $trigger = RunTrigger::Schedule,
-        RunStatus $status = RunStatus::Queued,
+        ?RunStatus $status = null,
         ?Run $source = null,
         ?string $skipReason = null,
     ): Run {
+        $driver = (string) config('opsifin_cron.execution_driver', 'queue');
+        if (! in_array($driver, ['queue', 'direct'], true)) {
+            throw new InvalidArgumentException('Unsupported execution driver.');
+        }
+        $status ??= $driver === 'direct' ? RunStatus::Pending : RunStatus::Queued;
         $key = $trigger === RunTrigger::Schedule
             ? Schedule::materializationKey($schedule->id, $scheduledFor)
             : null;
@@ -43,6 +48,8 @@ class RunDispatcher
             'scheduled_for' => $scheduledFor->copy()->setTimezone(config('app.timezone')),
             'trigger' => $trigger,
             'status' => $status,
+            'execution_driver' => $driver,
+            'prepared_at' => now(),
             'queued_at' => $status === RunStatus::Queued ? now() : null,
             'finished_at' => $status->isTerminal() ? now() : null,
             'error_message' => $status === RunStatus::Skipped ? $skipReason : null,
@@ -83,6 +90,9 @@ class RunDispatcher
 
     public function retry(Run $source): Run
     {
+        if (config('opsifin_cron.execution_driver') === 'direct' || $source->execution_driver === 'direct') {
+            throw new InvalidArgumentException('Retry is unavailable for direct execution. Create a new Run Now from the schedule.');
+        }
         if ($source->status !== RunStatus::Failed) {
             throw new InvalidArgumentException('Only failed runs can be retried.');
         }

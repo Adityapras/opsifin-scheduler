@@ -78,7 +78,7 @@ class SchedulesTable
                         ->modalDescription('Queues one manual run. The client and job template must still be active.')
                         ->action(function (Schedule $record, RunDispatcher $dispatcher): void {
                             $run = $dispatcher->manual($record);
-                            Notification::make()->title('Run #'.$run->id.' queued')->success()->send();
+                            Notification::make()->title('Run #'.$run->id.' created')->success()->send();
                         }),
                     EditAction::make(),
                 ])->label('Actions')->tooltip('Actions')->color('gray'),

@@ -5,6 +5,7 @@ Direktori ini berisi template production Opsifin Scheduler tanpa aaPanel:
 - `apache-vhost.conf.template`: VirtualHost Apache2, PHP-FPM, dan routing
   Laravel/Livewire;
 - `supervisor-worker.conf.template`: satu master Laravel Horizon;
+- `supervisor-direct-executor.conf.template`: satu daemon `jobs:work-direct`;
 - `opsifin-scheduler.cron`: satu Laravel `schedule:run` trigger melalui `/etc/cron.d`;
 - `logrotate.conf.template`: rotasi log Horizon dan scheduler.
 

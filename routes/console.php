@@ -15,6 +15,7 @@ Schedule::command('jobs:dispatch-due')
     ->runInBackground();
 
 Schedule::command('jobs:reconcile-queued')
+    ->when(fn () => config('opsifin_cron.execution_driver') === 'queue')
     ->everyMinute()
     ->name('opsifin:reconcile-queued')
     ->withoutOverlapping(10)
@@ -31,6 +32,7 @@ Schedule::command('telescope:prune --hours=168')
     ->withoutOverlapping(60);
 
 Schedule::command('horizon:snapshot')
+    ->when(fn () => config('opsifin_cron.execution_driver') === 'queue')
     ->everyFiveMinutes()
     ->name('opsifin:horizon-snapshot')
     ->withoutOverlapping(10);

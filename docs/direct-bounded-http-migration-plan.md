@@ -4,9 +4,9 @@
 
 | Metadata | Value |
 | --- | --- |
-| Status | Draft for final approval — implementation has not started |
+| Status | Compatibility implementation and local validation complete; production cutover pending |
 | Target architecture | Direct Bounded Concurrent HTTP |
-| Current architecture | Redis Queue + Laravel Horizon |
+| Current architecture | Queue default; direct HTTP available behind execution driver flag |
 | Production sizing baseline | Peak 123 Run due pada menit yang sama |
 | Primary timing requirement | Seluruh Run mulai dalam menit yang sama; beda detik diperbolehkan |
 | Delivery semantics | Best-effort periodic execution with next-period recovery |
@@ -14,9 +14,11 @@
 | Source of truth | MySQL `runs` |
 | Created | 9 September 2026 |
 
-> **Execution gate:** dokumen ini adalah checkpoint planning dan handoff. Jangan
-> mulai mengubah source code sampai user menyatakan planning sudah final dan
-> memberikan instruksi eksplisit untuk mulai eksekusi.
+> **Update 10 September 2026:** eksekusi dilanjutkan atas instruksi user.
+> Shared lifecycle, direct executor, UI, deployment templates, dan pengujian
+> lokal sudah tersedia. Lihat [bukti validasi](direct-http-validation.md).
+> Production pilot/soak, audit resource production, dan decommission masih
+> merupakan langkah berikutnya; default deployment tetap `queue`.
 
 ## 1. Ringkasan keputusan
 
@@ -84,7 +86,9 @@ Pernyataan arsitektur:
 | DNS failure | `failed` | DNS/connection error dan duration | Tidak |
 | Request timeout | `failed` | Timeout message dan duration | Tidak |
 | Invalid request configuration | `failed` | Validation/resolution message | Tidak |
-| Client/Template/Schedule paused sebelum send | `skipped` | Alasan skip | Tidak |
+| Client/Template paused sebelum send | `skipped` | Alasan skip | Tidak |
+| Schedule paused, occurrence terjadwal | `skipped` | Alasan skip | Tidak |
+| Schedule paused, Run Now manual | Tetap dieksekusi | Hasil HTTP normal | Tidak |
 | Overlap slot masih dipakai | `skipped` | Alasan overlap | Tidak |
 | Process mati sebelum request dikirim | `failed` atau `skipped` melalui stale recovery | Pesan bahwa request tidak selesai diproses | Tidak |
 | Process mati setelah request dikirim | `failed` melalui execution deadline | Pesan bahwa outcome endpoint tidak dapat dipastikan | Tidak |
@@ -726,26 +730,28 @@ ambigu tidak dipindahkan ke Redis.
 
 ## 15. Definition of done
 
-Migrasi dianggap selesai jika:
+Checklist berikut membedakan bukti lokal dan acceptance production. Tanda selesai
+untuk test berlaku pada fixture terisolasi, bukan bukti cutover production.
 
-- [ ] peak 123 memenuhi p99 start lag di bawah 60 detik;
-- [ ] projected peak 246 sudah diuji;
-- [ ] concurrency tidak pernah melampaui konfigurasi;
-- [ ] satu HTTP failure tidak menghentikan batch;
-- [ ] satu timeout hanya menggunakan satu slot;
-- [ ] semua response error yang aman tersimpan dan sudah di-redact;
-- [ ] tidak ada automatic retry;
-- [ ] tidak ada catch-up occurrence lama;
-- [ ] periode berikutnya membuat occurrence baru;
-- [ ] duplicate materialization tetap nol;
-- [ ] stale running Run menjadi terminal tanpa dikirim ulang;
-- [ ] `prevent_overlap` tetap bekerja;
-- [ ] Run Now berjalan di background;
-- [ ] operator dapat melihat executor health tanpa Horizon;
-- [ ] capacity test dan failure drill lulus;
+- [x] peak 123 memenuhi p99 start lag di bawah 60 detik;
+- [x] projected peak 246 sudah diuji;
+- [x] concurrency tidak pernah melampaui konfigurasi pada fixture;
+- [x] satu HTTP failure tidak menghentikan batch;
+- [x] satu timeout hanya menggunakan satu slot;
+- [x] response error pada skenario test tersimpan dan sudah di-redact;
+- [x] tidak ada automatic retry;
+- [x] tidak ada catch-up occurrence lama;
+- [x] periode berikutnya membuat occurrence baru;
+- [x] duplicate materialization tetap nol pada test;
+- [x] stale running Run menjadi terminal tanpa dikirim ulang;
+- [x] `prevent_overlap` tetap bekerja;
+- [x] Run Now berjalan di background;
+- [x] operator dapat melihat executor health tanpa Horizon;
+- [x] capacity test dan failure drill process lokal lulus;
+- [ ] audit durasi, MySQL contention, resource VPS, dan full-server failure drill;
 - [ ] staged cutover dan rollback telah diuji;
 - [ ] Redis/Horizon tidak lagi berada pada execution path final;
-- [ ] seluruh dokumentasi dan deployment procedure sudah diperbarui.
+- [x] dokumentasi runtime, handoff, validasi, dan deployment procedure compatibility diperbarui.
 
 ## 16. Risiko dan mitigasi
 
@@ -762,20 +768,34 @@ Migrasi dianggap selesai jika:
 | Response menyimpan credential | Kebocoran secret | Central redaction dan security test |
 | Direct executor mati tanpa diketahui | Pending Run tidak mulai | Heartbeat dan alert |
 
-## 17. Keputusan yang masih perlu dikunci
+## 17. Keputusan implementasi compatibility
 
 Rekomendasi default ditulis lebih dahulu:
 
 | Pertanyaan | Rekomendasi | Status |
 | --- | --- | --- |
-| Bentuk executor | Supervised direct executor terpisah dari dispatcher | Menunggu persetujuan final |
-| Concurrency awal QA | 20 | Menunggu hasil baseline/load test |
-| Run Now | Pending lalu diambil executor dalam beberapa detik | Menunggu persetujuan final |
-| Retry UI | Hapus; manual Run baru jika operator sengaja menjalankan ulang | Menunggu persetujuan final |
-| Pending start window | 55 detik dari `scheduled_for` | Menunggu hasil load test |
-| Status ambiguous outcome | `failed` dengan error message eksplisit | Menunggu persetujuan final |
-| Queue removal | Setelah compatibility dan production soak window | Menunggu persetujuan final |
-| Redis package removal | Hanya jika tidak digunakan subsistem lain | Perlu audit saat eksekusi |
+| Bentuk executor | Supervised rolling pool terpisah dari dispatcher | Diimplementasikan |
+| Concurrency awal QA | 20 | Lulus 123 Run × 5 detik; projected 246 memakai 40 |
+| Run Now | Pending lalu diambil executor pada polling berikutnya | Diimplementasikan; schedule harus tetap aktif sebelum send |
+| Retry UI | Disable untuk direct; Run Now membuat occurrence baru | Queue-only Retry dipertahankan selama rollback window |
+| Pending start window | 55 detik dari `scheduled_for` | Diimplementasikan dan diuji |
+| Status ambiguous outcome | `failed` dengan error message eksplisit | SIGKILL/deadline drill lulus |
+| Queue removal | Setelah compatibility dan production soak window | Belum dilakukan |
+| Redis package removal | Hanya jika tidak digunakan subsistem lain | Audit production masih diperlukan |
+
+### Deviasi dan batas implementasi
+
+- Pool memakai Guzzle/cURL multi yang sudah terpasang, bukan batch Laravel yang
+  menunggu satu batch selesai. Slot dapat diisi lintas polling, sambil heartbeat
+  terus berjalan dan Run Now tidak tertahan slow tail.
+- Lease `executor_states` ditambah untuk ownership satu daemon; proses kedua
+  standby, termasuk setelah crash sampai running lama melewati deadline.
+- `execution_driver`, `prepared_at`, dan `start_lag_ms` ditambah tanpa menghapus
+  metadata queue. Driver global menentukan occurrence baru, bukan routing per Task.
+- Phase 1–3 selesai. Validasi lokal Phase 4 lulus untuk skenario dalam laporan;
+  pengukuran resource dan drill pada VPS/MySQL tetap prasyarat Phase 5.
+- Phase 5–6 belum dijalankan. Komponen queue/Horizon tetap tersedia untuk rollback;
+  bukan bagian dari jalur pengiriman Run direct.
 
 ## 18. Handoff untuk eksekusi dengan model berikutnya
 

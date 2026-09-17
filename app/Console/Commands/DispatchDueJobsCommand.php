@@ -9,7 +9,7 @@ class DispatchDueJobsCommand extends Command
 {
     protected $signature = 'jobs:dispatch-due';
 
-    protected $description = 'Queue enabled HTTP jobs whose next run time is due';
+    protected $description = 'Prepare enabled HTTP jobs whose next run time is due';
 
     public function handle(DueScheduleDispatcher $dispatcher): int
     {
@@ -17,6 +17,7 @@ class DispatchDueJobsCommand extends Command
 
         $this->info(
             "Scanned {$report['scanned']}; queued {$report['queued']}; "
+            ."pending {$report['pending']}; "
             ."skipped {$report['skipped']}; recovered {$report['recovered']}."
         );
 

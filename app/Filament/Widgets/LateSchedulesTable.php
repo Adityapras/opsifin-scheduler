@@ -34,12 +34,12 @@ class LateSchedulesTable extends TableWidget
     public function table(Table $table): Table
     {
         return $table
-            ->query(Run::query()->with(['client', 'taskTemplate'])->where('status', RunStatus::Queued->value))
-            ->defaultSort('queued_at')->paginationPageOptions([5, 10, 25])
-            ->emptyStateHeading('Queue is clear')
-            ->emptyStateDescription('No occurrence is waiting for a worker.')
+            ->query(Run::query()->with(['client', 'taskTemplate'])->whereIn('status', [RunStatus::Queued->value, RunStatus::Pending->value]))
+            ->defaultSort('prepared_at')->paginationPageOptions([5, 10, 25])
+            ->emptyStateHeading('No pending occurrences')
+            ->emptyStateDescription('All prepared occurrences have been picked up.')
             ->columns([
-                TextColumn::make('queued_at')->label('Waiting')->since()->color('warning')->sortable(),
+                TextColumn::make('prepared_at')->label('Waiting')->since()->color('warning')->sortable(),
                 TextColumn::make('client.code')->label('Client')->weight('bold')->placeholder('Deleted'),
                 TextColumn::make('taskTemplate.key')->label('Task')->placeholder('Deleted'),
                 TextColumn::make('scheduled_for')->label('Scheduled for')->dateTime('d M H:i:s')->timezone(config('opsifin_cron.default_timezone')),
@@ -54,7 +54,7 @@ class LateSchedulesTable extends TableWidget
                             $canceller->cancel($record);
                             Notification::make()->title('Run #'.$record->id.' cancelled')->success()->send();
                         } catch (InvalidArgumentException) {
-                            Notification::make()->title('Run #'.$record->id.' is no longer queued')->warning()->send();
+                            Notification::make()->title('Run #'.$record->id.' is no longer waiting')->warning()->send();
                         }
                     }),
                 Action::make('open')->icon('heroicon-o-arrow-top-right-on-square')

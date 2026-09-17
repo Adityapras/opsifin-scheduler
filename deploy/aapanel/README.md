@@ -1,5 +1,9 @@
 # Template Development aaPanel
 
+Mode direct HTTP memakai `supervisor-direct-executor.conf.template`.
+Ikuti [runbook direct](../../docs/direct-http-operations.md); template Horizon
+tetap tersedia untuk compatibility dan rollback.
+
 Seluruh file dalam direktori ini hanya untuk development lokal WSL + aaPanel.
 File ini bukan konfigurasi production.
 

@@ -18,6 +18,8 @@ class Run extends Model
             'trigger' => RunTrigger::class,
             'scheduled_for' => 'datetime',
             'queued_at' => 'datetime',
+            'prepared_at' => 'datetime',
+            'start_lag_ms' => 'integer',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
             'execution_deadline_at' => 'datetime',

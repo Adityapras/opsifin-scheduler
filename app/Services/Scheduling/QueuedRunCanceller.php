@@ -18,11 +18,11 @@ class QueuedRunCanceller
         return DB::transaction(function () use ($run): Run {
             $lockedRun = Run::query()->lockForUpdate()->findOrFail($run->getKey());
 
-            if ($lockedRun->status !== RunStatus::Queued) {
-                throw new InvalidArgumentException('Only a queued run can be cancelled.');
+            if (! in_array($lockedRun->status, [RunStatus::Queued, RunStatus::Pending], true)) {
+                throw new InvalidArgumentException('Only a waiting run can be cancelled.');
             }
 
-            $queueJobIds = $this->removeQueuePayloads($lockedRun);
+            $queueJobIds = $lockedRun->status === RunStatus::Pending ? [] : $this->removeQueuePayloads($lockedRun);
 
             $before = ['status' => $lockedRun->status->value];
             $lockedRun->forceFill([
