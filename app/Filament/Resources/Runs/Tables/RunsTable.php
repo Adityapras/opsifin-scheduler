@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Runs\Tables;
 use App\Enums\RunStatus;
 use App\Enums\RunTrigger;
 use App\Models\Run;
+use App\Services\Maintenance\RunLogDeleter;
 use App\Services\Scheduling\QueuedRunCanceller;
 use App\Services\Scheduling\RunDispatcher;
 use Filament\Actions\Action;
@@ -42,6 +43,8 @@ class RunsTable
                     ->color(fn (?int $state) => $state !== null && $state < 400 ? 'success' : 'danger'),
                 TextColumn::make('duration_ms')->label('Duration')->alignEnd()->sortable()
                     ->formatStateUsing(fn (?int $state) => $state === null ? '—' : number_format($state).' ms'),
+                TextColumn::make('start_lag_ms')->label('Start lag')->alignEnd()->sortable()
+                    ->formatStateUsing(fn (?int $state) => $state === null ? '—' : number_format($state).' ms'),
                 TextColumn::make('error_message')->label('Message')->limit(55)->tooltip(fn (Run $record) => $record->error_message)->placeholder('—')->toggleable(),
             ])
             ->filters([
@@ -60,42 +63,57 @@ class RunsTable
             ->recordActions([
                 ActionGroup::make([
                     Action::make('cancel')->icon('heroicon-o-x-circle')->color('danger')->requiresConfirmation()
-                        ->modalHeading('Cancel queued run?')
-                        ->modalDescription('The queue payload will be removed. Runs that have already started cannot be cancelled here.')
-                        ->visible(fn (Run $record) => $record->status === RunStatus::Queued)
+                        ->modalHeading('Cancel waiting run?')
+                        ->modalDescription('Cancel this occurrence before execution starts.')
+                        ->visible(fn (Run $record) => in_array($record->status, [RunStatus::Queued, RunStatus::Pending], true))
                         ->authorize(fn (Run $record) => auth()->user()->can('cancel', $record))
                         ->action(function (Run $record, QueuedRunCanceller $canceller): void {
                             try {
                                 $canceller->cancel($record);
                                 Notification::make()->title('Run #'.$record->id.' cancelled')->success()->send();
                             } catch (InvalidArgumentException) {
-                                Notification::make()->title('Run #'.$record->id.' is no longer queued')->warning()->send();
+                                Notification::make()->title('Run #'.$record->id.' is no longer waiting')->warning()->send();
                             }
                         }),
                     Action::make('retry')->icon('heroicon-o-arrow-path')->color('warning')->requiresConfirmation()
-                        ->visible(fn (Run $record) => $record->status === RunStatus::Failed && $record->schedule_id !== null)
+                        ->visible(fn (Run $record) => config('opsifin_cron.execution_driver') === 'queue' && $record->execution_driver !== 'direct' && $record->status === RunStatus::Failed && $record->schedule_id !== null)
                         ->authorize(fn (Run $record) => auth()->user()->can('retry', $record))
                         ->action(function (Run $record, RunDispatcher $dispatcher): void {
                             $retry = $dispatcher->retry($record);
                             Notification::make()->title('Retry occurrence #'.$retry->id.' queued')->success()->send();
                         }),
                     ViewAction::make(),
+                    Action::make('delete')->label('Delete log')->icon('heroicon-o-trash')->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete this execution log?')
+                        ->modalDescription('The record is removed permanently. The deletion itself is written to Audit history.')
+                        ->modalSubmitActionLabel('Delete')
+                        ->visible(fn (Run $record) => $record->status->isTerminal())
+                        ->authorize(fn (Run $record) => auth()->user()->can('delete', $record))
+                        ->action(function (Run $record, RunLogDeleter $deleter): void {
+                            try {
+                                $deleter->delete($record);
+                                Notification::make()->title('Execution log #'.$record->id.' deleted')->success()->send();
+                            } catch (InvalidArgumentException) {
+                                Notification::make()->title('Run #'.$record->id.' is running and cannot be deleted')->warning()->send();
+                            }
+                        }),
                 ])->label('Actions')->tooltip('Actions')->color('gray'),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
                     BulkAction::make('cancelQueued')
-                        ->label('Cancel queued runs')
+                        ->label('Cancel waiting runs')
                         ->icon('heroicon-o-x-circle')
                         ->color('danger')
                         ->requiresConfirmation()
-                        ->modalDescription('Only selected runs that are still queued will be cancelled. Running and completed runs are left untouched.')
+                        ->modalDescription('Cancel selected occurrences that are still waiting to start.')
                         ->authorize(fn (): bool => auth()->user()->canOperate())
                         ->action(function (Collection $records, QueuedRunCanceller $canceller): void {
                             $cancelled = 0;
 
                             foreach ($records as $record) {
-                                if ($record->status !== RunStatus::Queued) {
+                                if (! in_array($record->status, [RunStatus::Queued, RunStatus::Pending], true)) {
                                     continue;
                                 }
 
@@ -108,7 +126,26 @@ class RunsTable
                             }
 
                             Notification::make()
-                                ->title($cancelled.' queued run(s) cancelled')
+                                ->title($cancelled.' waiting run(s) cancelled')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('deleteLogs')
+                        ->label('Delete selected logs')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete selected execution logs?')
+                        ->modalDescription('Finished occurrences are removed permanently. Runs still waiting or running are skipped.')
+                        ->modalSubmitActionLabel('Delete')
+                        ->authorize(fn (): bool => auth()->user()->can('deleteAny', Run::class))
+                        ->action(function (Collection $records, RunLogDeleter $deleter): void {
+                            $result = $deleter->deleteMany($records);
+
+                            Notification::make()
+                                ->title($result['deleted'].' execution log(s) deleted')
+                                ->body($result['skipped'] > 0 ? $result['skipped'].' skipped because they are still waiting or running.' : null)
                                 ->success()
                                 ->send();
                         })

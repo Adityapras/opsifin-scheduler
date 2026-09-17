@@ -8,13 +8,20 @@ use Illuminate\Support\Carbon;
 
 class RetentionService
 {
+    /** Belum terminal: `pending` adalah status hidup pada driver direct. */
+    private const LIVE_STATUSES = [
+        RunStatus::Pending->value,
+        RunStatus::Queued->value,
+        RunStatus::Running->value,
+    ];
+
     public function count(int $runDays): int
     {
         $runCutoff = Carbon::now()->subDays($runDays);
 
         return Run::query()
             ->where('scheduled_for', '<', $runCutoff)
-            ->whereNotIn('status', [RunStatus::Queued->value, RunStatus::Running->value])
+            ->whereNotIn('status', self::LIVE_STATUSES)
             ->count();
     }
 
@@ -25,7 +32,7 @@ class RetentionService
 
         return $this->deleteInChunks(fn () => Run::query()
             ->where('scheduled_for', '<', $runCutoff)
-            ->whereNotIn('status', [RunStatus::Queued->value, RunStatus::Running->value])
+            ->whereNotIn('status', self::LIVE_STATUSES)
             ->limit($chunk)
             ->delete());
     }
