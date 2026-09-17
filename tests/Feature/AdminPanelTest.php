@@ -38,6 +38,7 @@ class AdminPanelTest extends TestCase
             'summary' => ['/admin/client-summaries'],
             'users' => ['/admin/users'],
             'audit' => ['/admin/audit-logs'],
+            'user guide' => ['/admin/user-guide'],
         ];
     }
 
@@ -54,6 +55,7 @@ class AdminPanelTest extends TestCase
             ->get('/admin')
             ->assertSuccessful()
             ->assertSee('Appearance settings')
+            ->assertSee('Color scheme')
             ->assertSee('Color palette')
             ->assertSee('Opsifin')
             ->assertSee('Ocean')
@@ -61,10 +63,39 @@ class AdminPanelTest extends TestCase
             ->assertSee('Sunset')
             ->assertSee('Light')
             ->assertSee('Dark')
-            ->assertSee('Auto')
+            ->assertSee('System')
             ->assertSee('x-on:click.outside="open = false"', false)
             ->assertSee('x-data="opsifinAppearance(', false)
             ->assertSee('window.opsifinAppearance', false);
+    }
+
+    /** @return array<string, array{UserRole}> */
+    public static function guideRoleProvider(): array
+    {
+        return [
+            'administrator' => [UserRole::Admin],
+            'operator' => [UserRole::Operator],
+            'viewer' => [UserRole::Viewer],
+        ];
+    }
+
+    #[DataProvider('guideRoleProvider')]
+    public function test_user_guide_renders_markdown_modules_for_all_active_roles(UserRole $role): void
+    {
+        $this->actingAs($this->user($role))
+            ->get('/admin/user-guide?document=clients')
+            ->assertSuccessful()
+            ->assertSee('Module Clients')
+            ->assertSee('Mengganti credential dengan aman');
+    }
+
+    public function test_user_guide_rejects_unknown_document_keys_without_reading_arbitrary_files(): void
+    {
+        $this->actingAs($this->user())
+            ->get('/admin/user-guide?document=../../.env')
+            ->assertSuccessful()
+            ->assertSee('Panduan Pengguna Opsifin Scheduler')
+            ->assertDontSee('APP_KEY=');
     }
 
     public function test_login_password_is_hidden_by_default_and_livewire_is_loaded(): void
@@ -73,7 +104,7 @@ class AdminPanelTest extends TestCase
 
         $response->assertSee("x-bind:type=\"isPasswordRevealed ? 'text' : 'password'\"", false);
         $response->assertSee('autocomplete="current-password"', false);
-        $response->assertSee('livewire.min.js', false);
+        $this->assertMatchesRegularExpression('/<script[^>]+src="[^"\s]*\/livewire(?:\.min)?\.js\?[^"\s]*"/', $response->getContent());
         $response->assertSee('images/brand/opsifin-logo.png', false);
         $response->assertSee('Forgot password?');
         $response->assertSee('opsifin-appearance-init', false);
