@@ -8,6 +8,32 @@ sebelum melanjutkan.
 
 ## Status terbaru — Direct Bounded HTTP
 
+### Sesi 25 September 2026 (lanjutan) — Test connection menguji credential
+
+- `ConnectionTester` sekarang GET `{base_url}` + `opsifin_cron.connection_test_path`
+  (default `/api/remittanceApi`, env `CRON_CONNECTION_TEST_PATH`), bukan GET base
+  URL. Dasar (dibaca dari `opsifin-main` commit a1bf87d21): REST_Controller
+  memvalidasi Basic Auth di constructor (salah → 401 sebelum method dipilih);
+  `RemittanceApi::index_get` membalas 200 "Connection Success" dan constructor
+  hanya SELECT `bend_bank_account`. 200/405 = valid, 401/403 = ditolak, 404 =
+  endpoint tidak ada. SecretKey tidak bisa diuji (hanya dicek di `index_post`).
+- Test: `ConnectionTesterTest` dengan `Http::fake`; suite 159 passed, 1 skipped.
+  Di-deploy ke container 25 Sep; atas persetujuan user, satu Test connection ke
+  Client `qa2` (`GET https://qa2.fin-svc-barto.net/api/remittanceApi`) →
+  **Credentials valid, HTTP 200, 451 ms**. Jalur credential salah (401) hanya
+  dibuktikan lewat test, belum ke endpoint nyata. Belum di-commit.
+
+### Sesi 25 September 2026 (lanjutan) — highlight baris terpilih
+
+- `theme.css`: baris tabel terpilih (`tr.fi-selected`) diberi tint primary +
+  garis atas/bawah di **setiap sel**, berlaku untuk semua tabel resource.
+  Bawaan Filament hanya abu-abu tipis dan garis di sel pertama yang hilang saat
+  tabel di-scroll horizontal. Dicek di Chrome (Execution logs, 2 baris dipilih,
+  di-scroll ke kanan). Belum di-commit.
+- Catatan: setiap recreate container bisa membuat satu occurrence QA2 `skipped`
+  (missed start window) bila bertepatan dengan jadwalnya; terlihat Run
+  terjadwal 14:11 WIB saat redeploy siang ini.
+
 ### Sesi 25 September 2026 (lanjutan) — delete, konfirmasi, dashboard, favicon
 
 Perubahan (belum di-commit):

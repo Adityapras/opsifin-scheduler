@@ -41,9 +41,23 @@ pada Template atau menaruh secret di URL bila dapat memakai header/body.
 
 ## Test connection
 
-**Test connection** melakukan GET ke Base URL dengan Authorization Client.
-Hasil reachable tidak membuktikan endpoint Task berhasil; lanjutkan dengan
-Inspect request dan Run now yang aman.
+**Test connection** menguji username dan password Client dengan `GET
+{Base URL}/api/remittanceApi` (dapat diubah lewat `CRON_CONNECTION_TEST_PATH`).
+Endpoint itu memvalidasi Basic Auth lalu hanya membaca data, jadi aman
+diklik kapan saja.
+
+| Hasil | Arti | Tindakan |
+| --- | --- | --- |
+| Credentials valid | HTTP 200, atau 405 (auth lolos, endpoint tanpa GET) | — |
+| Credentials rejected | HTTP 401/403 | Perbaiki username/password |
+| Check unavailable | HTTP 404 | Periksa Base URL atau versi aplikasi Client |
+| Client server error | HTTP 5xx | Periksa server Client, ulangi tes |
+| Unexpected response | Status lain, misalnya redirect | Periksa Base URL (http/https) |
+| Cannot connect | DNS/TLS/timeout | Periksa Base URL dan jaringan |
+
+**SecretKey tidak ikut diuji.** Header itu hanya divalidasi di jalur POST yang
+memproses transaksi. Credential valid juga tidak membuktikan endpoint Task
+berhasil; lanjutkan dengan Inspect request dan Run now yang aman.
 
 ## Activate, Deactivate, dan provisioning
 

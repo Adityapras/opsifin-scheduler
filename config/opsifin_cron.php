@@ -42,6 +42,10 @@ return [
         'queue' => 'default',
     ],
 
+    // Probe "Test connection". GET /api/remittanceApi di Opsifin memvalidasi Basic
+    // Auth lalu hanya membaca data, jadi aman dipakai untuk menguji credential.
+    'connection_test_path' => env('CRON_CONNECTION_TEST_PATH', '/api/remittanceApi'),
+
     // Potong body respons sebelum disimpan ke tabel `runs`.
     'response_excerpt_length' => (int) env('CRON_RESPONSE_EXCERPT_LENGTH', 2000),
 

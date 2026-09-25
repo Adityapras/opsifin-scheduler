@@ -38,6 +38,7 @@ callback lain tetap diproses dan final sweep/deadline menutup Run yang tersisa.
 | `CRON_DIRECT_HEARTBEAT_SEC` | 15 | Lease berumur max(30, 3 × heartbeat) detik |
 | `CRON_DIRECT_RESPONSE_MAX_BYTES` | 65536 | Prefix body maksimum dalam memori per request |
 | `CRON_RESPONSE_EXCERPT_LENGTH` | 2000 | Batas karakter respons setelah redaction di DB |
+| `CRON_CONNECTION_TEST_PATH` | `/api/remittanceApi` | Path GET untuk Test connection; harus memvalidasi Basic Auth tanpa efek samping |
 
 Body dikonsumsi sampai selesai/timeout; hanya prefix yang dibuffer. Batas ini
 mengendalikan memori, bukan bandwidth. HTTP non-2xx menjadi `failed`; JSON
