@@ -86,6 +86,18 @@ docker compose stop scheduler direct-executor
 `direct-executor` diberi `stop_grace_period` 2000 detik (sama dengan
 `stopwaitsecs` Supervisor) agar request aktif selesai sebelum container mati.
 
+Service `scheduler`, `direct-executor`, dan `horizon` wajib memakai
+`stop_signal: SIGTERM`. Image dibangun dari `php:8.4-apache` yang mewarisi
+`STOPSIGNAL SIGWINCH` (graceful stop Apache). Proses artisan mengabaikan SIGWINCH,
+sehingga tanpa override `docker stop` tidak memicu drain dan selalu menunggu
+2000 detik sebelum kill paksa (terjadi 25 Sep 2026). Dengan SIGTERM, executor
+idle berhenti kurang dari satu detik. Service `web` tetap SIGWINCH.
+
+Container yang dibuat sebelum override ini masih menyimpan SIGWINCH. Bila perlu
+menghentikannya, kirim `docker kill --signal SIGTERM <container>` setelah
+`docker compose` mulai menghentikannya; itu tetap graceful (request aktif
+diselesaikan).
+
 Untuk driver `queue`, ubah `CRON_EXECUTION_DRIVER=queue` lalu jalankan
 `docker compose --profile workers --profile queue up -d` dan hentikan
 `direct-executor`.
