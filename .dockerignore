@@ -1,0 +1,42 @@
+# Build context hanya berisi source aplikasi; dependency dan aset dibangun di image.
+.git
+.github
+.vscode
+.idea
+.codex
+.cursor
+node_modules
+vendor
+public/build
+public/hot
+public/storage
+public/.user.ini
+public/404.html
+public/502.html
+public/index.html
+.user.ini
+.phpunit.cache
+.phpunit.result.cache
+
+# Secret dan konfigurasi lokal tidak boleh ikut ke image.
+.env
+.env.*
+!.env.example
+!.env.docker.example
+auth.json
+
+# Cache bootstrap host bisa merujuk paket dev atau path host.
+bootstrap/cache/*.php
+
+# Isi storage (log, backup, import report berisi credential) tidak boleh ikut ke image.
+storage/app/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/testing/*
+storage/framework/views/*
+storage/logs/*
+storage/pail
+storage/*.key
+
+docker-compose*.yml
+compose*.yml

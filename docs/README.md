@@ -20,6 +20,7 @@ blok kode kepada pengguna.
 | Mengoperasikan Direct HTTP | [Direct HTTP Operations](direct-http-operations.md) |
 | Melihat bukti pengujian | [Direct HTTP Validation](direct-http-validation.md) |
 | Menangani operasi umum | [Operations Runbook](operations.md) |
+| Menjalankan aplikasi di Docker (WSL2) | [Docker](docker.md) |
 | Melanjutkan pekerjaan lintas sesi | [Current Handoff](handoff.md) |
 
 ## Struktur user guide

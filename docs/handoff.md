@@ -1,12 +1,30 @@
 # Current Handoff — Opsifin Scheduler
 
-Last updated: **14 September 2026, Asia/Bangkok**
+Last updated: **25 September 2026, Asia/Jakarta**
 
 Ini adalah memory utama lintas sesi. Baca file ini,
 [`../CLAUDE.md`](../CLAUDE.md), dan [`architecture.md`](architecture.md)
 sebelum melanjutkan.
 
 ## Status terbaru — Direct Bounded HTTP
+
+### Sesi 25 September 2026 — setup Docker
+
+- Ditambahkan `docker/` (Dockerfile PHP 8.4 + Apache, entrypoint, vhost, ini),
+  `docker-compose.yml`, `.dockerignore`, `.env.docker.example`, dan
+  [`docker.md`](docker.md). `.env.docker` masuk `.gitignore`.
+- Container memakai network external `opsifin-main-networks` (bukan
+  `opsifin-main-network`): `DB_HOST=mysql` (MySQL 5.7.31), `REDIS_HOST=opsifin-redis`.
+- Terverifikasi 25 Sep: image build sukses; `web` healthy di port 8060; `/up`
+  200; aset Vite 200; container menjangkau `mysql:3306` (ditolak 1045 karena
+  credential DB belum diisi). Login panel masih 500 sampai DB diimpor dan
+  `DB_USERNAME`/`DB_PASSWORD` diisi di `.env.docker`.
+- 25 Sep: user mematikan cron aaPanel dan meng-uninstall aaPanel. Terverifikasi
+  `/www` tidak ada, crontab user kosong, tidak ada proses artisan worker di host
+  (crontab root tidak dicek). Path `$PHP=/www/server/php/84/bin/php` di
+  `CLAUDE.md` sudah tidak valid; PHP host sekarang `/bin/php` 8.4.
+- Belum dijalankan: profile `workers` (scheduler + direct executor), import DB,
+  migration, test suite terhadap MySQL 5.7. Tidak ada commit.
 
 ### Sesi 14 September 2026 — QA2 Schedule 2959 diaktifkan user
 

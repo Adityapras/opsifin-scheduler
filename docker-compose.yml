@@ -1,0 +1,73 @@
+# Opsifin Scheduler di Docker. Panduan: docs/docker.md
+#
+#   docker compose up -d --build                      # panel web saja
+#   docker compose --profile workers up -d            # + scheduler dan direct executor
+#
+# Scheduler/executor sengaja di profile terpisah: begitu aktif, Schedule yang
+# enabled di database akan benar-benar mengirim HTTP ke endpoint Client.
+
+x-app: &app
+  image: opsifin-scheduler:local
+  env_file: .env.docker
+  restart: unless-stopped
+  volumes:
+    - storage:/var/www/html/storage
+    # Source importer cron:import; read-only agar crontab legacy tidak bisa berubah.
+    - ${OPSIFIN_LEGACY_PATH:-../crontab-legacy}:/legacy:ro
+  networks:
+    - opsifin
+
+services:
+  web:
+    <<: *app
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: opsifin-cron-web
+    ports:
+      - "${OPSIFIN_CRON_PORT:-8060}:80"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/up"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  scheduler:
+    <<: *app
+    container_name: opsifin-cron-scheduler
+    profiles: ["workers"]
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      web:
+        condition: service_healthy
+
+  direct-executor:
+    <<: *app
+    container_name: opsifin-cron-direct
+    profiles: ["workers"]
+    command: ["php", "artisan", "jobs:work-direct"]
+    # Samakan dengan stopwaitsecs Supervisor: request aktif diberi waktu selesai.
+    stop_grace_period: 2000s
+    depends_on:
+      web:
+        condition: service_healthy
+
+  horizon:
+    <<: *app
+    container_name: opsifin-cron-horizon
+    profiles: ["queue"]
+    command: ["php", "artisan", "horizon"]
+    stop_grace_period: 2000s
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  storage:
+    name: opsifin-cron-storage
+
+networks:
+  opsifin:
+    name: ${OPSIFIN_DOCKER_NETWORK:-opsifin-main-networks}
+    external: true
