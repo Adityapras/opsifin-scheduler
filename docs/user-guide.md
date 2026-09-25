@@ -167,7 +167,8 @@ failure queue compatibility).
 
 - **Search** mencari kolom utama dan judul kolom dapat dipakai untuk sort.
 - **Filters** dapat tersimpan dalam session browser; gunakan **Reset filters**.
-- Checkbox memilih record untuk bulk action.
+- Checkbox memilih record untuk bulk action. Baris terpilih disorot warna primary
+  di seluruh lebarnya, sehingga tetap terlihat saat tabel lebar di-scroll ke samping.
 - Menu **Actions** berisi aksi per record.
 - Pagination membatasi record yang sedang terlihat.
 
