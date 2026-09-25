@@ -15,7 +15,7 @@ use InvalidArgumentException;
 
 class LateSchedulesTable extends TableWidget
 {
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 6;
 
     protected ?string $pollingInterval = '30s';
 

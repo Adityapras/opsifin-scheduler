@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\Clients\Tables;
 
+use App\Filament\Resources\Clients\Actions\DeleteClientAction;
 use App\Models\Client;
 use App\Services\ConnectionTester;
+use App\Services\Maintenance\ClientDeleter;
 use App\Services\Scheduling\DefaultScheduleProvisioner;
 use App\Services\Scheduling\ScheduleManager;
 use Filament\Actions\Action;
@@ -105,6 +107,7 @@ class ClientsTable
                         }),
 
                     EditAction::make(),
+                    DeleteClientAction::make(),
                 ])->label('Actions')->tooltip('Actions')->color('gray'),
             ])
             ->toolbarActions([
@@ -146,6 +149,26 @@ class ClientsTable
                         ->modalDescription('Every occurrence for the selected clients will stop being materialized. Existing queue items are skipped by the worker.')
                         ->authorize(fn () => auth()->user()->canOperate())
                         ->action(fn (Collection $records) => $records->each->update(['is_active' => false]))
+                        ->deselectRecordsAfterCompletion(),
+
+                    BulkAction::make('deleteClients')
+                        ->label('Delete selected')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Delete selected clients?')
+                        ->modalDescription('Only clients without schedules are deleted; delete their schedules first. Run history is kept and every deletion is written to Audit history.')
+                        ->modalSubmitActionLabel('Delete')
+                        ->authorize(fn () => auth()->user()->canManage())
+                        ->action(function (Collection $records, ClientDeleter $deleter): void {
+                            $result = $deleter->deleteMany($records);
+
+                            Notification::make()
+                                ->title($result['deleted'].' client(s) deleted')
+                                ->body($result['skipped'] > 0 ? $result['skipped'].' skipped because they still have schedules.' : null)
+                                ->success()
+                                ->send();
+                        })
                         ->deselectRecordsAfterCompletion(),
                 ]),
             ]);

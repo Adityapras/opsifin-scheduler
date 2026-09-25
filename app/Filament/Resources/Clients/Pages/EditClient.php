@@ -2,12 +2,15 @@
 
 namespace App\Filament\Resources\Clients\Pages;
 
+use App\Filament\Concerns\ConfirmsSave;
+use App\Filament\Resources\Clients\Actions\DeleteClientAction;
 use App\Filament\Resources\Clients\ClientResource;
-use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditClient extends EditRecord
 {
+    use ConfirmsSave;
+
     protected static string $resource = ClientResource::class;
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
@@ -22,7 +25,7 @@ class EditClient extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            DeleteAction::make(),
+            DeleteClientAction::make(redirectToIndex: true),
         ];
     }
 }

@@ -72,6 +72,8 @@ class TaskTemplatesTable
                                 ->multiple()->searchable()->preload()->required(),
                             ...self::timingSchema(),
                         ])
+                        ->requiresConfirmation()
+                        ->modalDescription('Creates a schedule for each selected client that does not have this job yet. Existing schedules are left unchanged.')
                         ->action(function (TaskTemplate $record, array $data, ScheduleManager $manager): void {
                             $count = $manager->assign($record, $data['client_ids'], $data['cron_expression'], $data['timezone'], (bool) $data['is_enabled']);
                             Notification::make()->title($count.' new assignment(s) created')->success()->send();

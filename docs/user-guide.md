@@ -114,7 +114,7 @@ Jangan berbagi akun. Audit history menggunakan identitas user yang sedang login.
 | Kemampuan | Administrator | Operator | Viewer |
 | --- | :---: | :---: | :---: |
 | Melihat Dashboard dan seluruh data operasional | Ya | Ya | Ya |
-| Membuat/mengubah Client | Ya | Tidak | Tidak |
+| Membuat/mengubah/menghapus Client | Ya | Tidak | Tidak |
 | Activate/Deactivate dan Test connection Client | Ya | Ya | Tidak |
 | Membuat/mengubah Task Template | Ya | Tidak | Tidak |
 | Assign/remove Template | Ya | Tidak | Tidak |
@@ -186,6 +186,11 @@ refresh halaman.
 8. Jangan menyalin credential, Authorization, `.env`, atau backup DB ke tiket.
 9. Bulk Resume harus bertahap dan selalu diikuti monitoring.
 10. Direct failure atau outcome ambigu tidak dikirim ulang otomatis.
+11. Semua aksi yang mengubah atau menghapus data—termasuk tombol **Save** di
+    halaman Edit dan ikon Enabled di tabel Schedules—meminta konfirmasi. Baca
+    isi modal sebelum menyetujui.
+12. Client hanya bisa dihapus setelah seluruh Schedule-nya dihapus; Schedule
+    yang sedang running tidak bisa dihapus.
 
 ## 11. Quick start berdasarkan role
 

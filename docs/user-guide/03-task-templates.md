@@ -22,6 +22,10 @@ canonical yang dapat dipakai banyak Client.
 | Enable immediately | State awal assignment baru |
 | Prevent overlapping runs | Overlap policy awal |
 
+Form tersusun dua kolom: **Job template** dan **HTTP request** di kolom lebar,
+**Default schedule** dan **Timeouts** di kolom samping. Kartu Migration trace
+tidak ditampilkan lagi; datanya tetap tersimpan.
+
 Default hanya berlaku ketika assignment dibuat; perubahan default tidak menimpa
 Schedule yang sudah ada.
 

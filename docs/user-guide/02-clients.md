@@ -25,7 +25,10 @@ Filter: Active, Needs review, dan Has enabled schedules.
 | Password/Token | Secret autentikasi |
 | Secret key | Secret tambahan untuk header/body |
 | Create default schedules | Provisioning dari template auto-assign |
-| Needs manual verification | Data belum tervalidasi |
+
+Form tidak lagi menampilkan kartu **Review & notes**. Nilai `needs_review`,
+review notes, dan notes yang sudah ada tetap tersimpan dan kolom **Review** di
+tabel tetap tampil.
 
 Default Schedule mengikuti kebijakan Template. Pastikan **Enable immediately**
 tidak digunakan tanpa review.
@@ -59,6 +62,17 @@ Inspect request dan Run now yang aman.
 
 ## Menghapus Client
 
-Client hanya dapat dihapus bila tidak memiliki Schedule. Gunakan Deactivate atau
-Pause untuk menghentikan eksekusi; jangan menghapus sebagai kill switch.
+Menu aksi baris dan halaman Edit memiliki **Delete** (Administrator). Client
+hanya dapat dihapus bila tidak memiliki Schedule:
 
+1. Klik **Delete** pada Client. Bila Client masih memiliki Schedule, modal
+   menampilkan jumlahnya dan tombol **Open schedules of this client** yang
+   membuka tabel Schedules dengan filter Client tersebut.
+2. Hapus seluruh Schedule Client itu (lihat
+   [Module Schedules](04-schedules.md#menghapus-schedule)).
+3. Kembali ke Clients dan klik **Delete** lagi, lalu konfirmasi.
+
+Bulk **Delete selected** melewati Client yang masih memiliki Schedule dan
+melaporkan jumlahnya. Riwayat Run tetap disimpan dan setiap penghapusan tercatat
+di Audit history. Gunakan Deactivate atau Pause untuk menghentikan eksekusi;
+jangan menghapus sebagai kill switch.

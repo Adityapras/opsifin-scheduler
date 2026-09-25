@@ -85,13 +85,6 @@ class ScheduleForm
                     Textarea::make('review_notes')->rows(2)->columnSpanFull(),
                 ]),
 
-            Section::make('Migration trace')
-                ->collapsed()->columns(2)
-                ->schema([
-                    TextInput::make('legacy_pattern')->disabled(),
-                    TextInput::make('legacy_line_no')->disabled(),
-                    Textarea::make('legacy_command')->rows(2)->disabled()->columnSpanFull(),
-                ]),
         ]);
     }
 

@@ -36,6 +36,9 @@ Filter: Client, Job, Enabled, dan Needs review. Tabel refresh tiap 30 detik.
 | `0 6 * * *` | Setiap hari pukul 06:00 |
 | `0 6 * * 1-5` | Senin–Jumat pukul 06:00 |
 
+Kartu Migration trace (pattern, baris, dan command legacy) tidak ditampilkan
+lagi di form; datanya tetap tersimpan.
+
 Satu Client dapat memiliki beberapa timing untuk Template yang sama selama cron
 expression berbeda.
 
@@ -62,6 +65,9 @@ Run now boleh digunakan saat Schedule paused. Pada direct status awalnya
 - Waktu selama pause tidak di-replay.
 - Pause tidak menghentikan request yang sudah running.
 
+Mengklik ikon **Enabled** di tabel sekarang meminta konfirmasi Pause/Resume
+sebelum state berubah.
+
 Bulk Resume berdampak luas. Filter dan pilih subset yang tepat, periksa jumlah
 pilihan, lalu monitor setelah konfirmasi.
 
@@ -84,3 +90,17 @@ flowchart TD
 Occurrence overlap tetap tercatat sebagai `skipped`, tetapi HTTP kedua tidak
 dikirim. Slot bersifat atomik di database dan tidak bergantung pada file lock.
 
+
+## Menghapus Schedule
+
+Administrator dapat menghapus Schedule lewat **Delete** di menu aksi baris,
+header halaman Edit, atau bulk **Delete selected**. Setiap penghapusan meminta
+konfirmasi; modal memberi peringatan bila Schedule masih enabled.
+
+- Schedule dengan Run yang sedang `running` tidak dapat dihapus; bulk delete
+  melewatinya dan melaporkan jumlah yang dilewati.
+- Riwayat Run tetap disimpan dengan kolom Schedule kosong.
+- Run yang masih menunggu (`pending`/`queued`) otomatis di-skip oleh executor.
+- Penghapusan tercatat di Audit history.
+
+Pause lebih aman bila hanya ingin menghentikan eksekusi sementara.

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Schedules\Tables;
 
 use App\Enums\RunStatus;
+use App\Filament\Resources\Schedules\Actions\DeleteScheduleAction;
 use App\Models\Schedule;
 use App\Services\CronDescriber;
 use App\Services\Execution\HttpExecutor;
@@ -55,6 +56,12 @@ class SchedulesTable
                 IconColumn::make('is_enabled')->label('Enabled')->boolean()
                     ->action(Action::make('toggleEnabled')
                         ->authorize(fn (Schedule $record) => auth()->user()->can('toggle', $record))
+                        ->requiresConfirmation()
+                        ->modalHeading(fn (Schedule $record) => ($record->is_enabled ? 'Pause' : 'Resume').' '.$record->client->code.' / '.$record->taskTemplate->key.'?')
+                        ->modalDescription(fn (Schedule $record) => $record->is_enabled
+                            ? 'No new occurrence is created until the schedule is resumed.'
+                            : 'The schedule starts sending HTTP requests to the client on its next occurrence.')
+                        ->modalSubmitActionLabel(fn (Schedule $record) => $record->is_enabled ? 'Pause' : 'Resume')
                         ->action(fn (Schedule $record, ScheduleManager $manager) => $manager->setEnabled($record, ! $record->is_enabled))),
             ])
             ->filters([
@@ -81,6 +88,7 @@ class SchedulesTable
                             Notification::make()->title('Run #'.$run->id.' created')->success()->send();
                         }),
                     EditAction::make(),
+                    DeleteScheduleAction::make(),
                 ])->label('Actions')->tooltip('Actions')->color('gray'),
             ])
             ->toolbarActions([
@@ -112,6 +120,7 @@ class SchedulesTable
                         ->requiresConfirmation()->authorize(fn () => auth()->user()->canOperate())
                         ->action(fn (Collection $records, ScheduleManager $manager) => $manager->setEnabledBulk($records, false))
                         ->deselectRecordsAfterCompletion(),
+                    DeleteScheduleAction::bulk(),
                 ]),
             ]);
     }

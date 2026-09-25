@@ -4,7 +4,6 @@ namespace App\Filament\Resources\Clients\Schemas;
 
 use App\Enums\AuthType;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
@@ -95,24 +94,6 @@ class ClientForm
                             ->helperText('Schedules are created paused by default. Review and resume them after testing the client connection.')
                             ->default(true)
                             ->dehydrated(false),
-                    ]),
-
-                Section::make('Review & notes')
-                    ->columns(2)
-                    ->schema([
-                        Toggle::make('needs_review')
-                            ->label('Needs manual verification')
-                            ->helperText('Set automatically by the importer when credentials drift or base URLs conflict.'),
-
-                        Textarea::make('review_notes')
-                            ->label('Review notes')
-                            ->rows(3)
-                            ->columnSpanFull(),
-
-                        Textarea::make('notes')
-                            ->label('Free-form notes')
-                            ->rows(3)
-                            ->columnSpanFull(),
                     ]),
 
                 Section::make('Legacy origin')

@@ -35,6 +35,8 @@ class ListRuns extends ListRecords
                         ->numeric()->minValue(1)->maxValue(3650)->required()
                         ->default(fn () => (int) config('opsifin_cron.runs_retention_days')),
                 ])
+                ->requiresConfirmation()
+                ->modalIcon('heroicon-o-archive-box-x-mark')
                 ->modalHeading('Delete old execution logs')
                 ->modalSubmitActionLabel('Delete')
                 ->action(function (array $data, RetentionService $retention): void {

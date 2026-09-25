@@ -6,7 +6,9 @@
 
 Menu: **System → User management**, hanya Administrator. Field: Avatar, Name,
 Email unik, Role, Can sign in, Password, dan Confirm password. Password kosong
-saat edit mempertahankan password lama.
+saat edit mempertahankan password lama. Kartu **Profile** menampilkan avatar di
+kiri serta Name, Email, Role, dan Can sign in di kanan; kartu **Security**
+(password) berada di kolom samping.
 
 - Terapkan least privilege dan jangan memakai akun bersama.
 - Pastikan minimal satu Administrator aktif.
@@ -17,6 +19,16 @@ saat edit mempertahankan password lama.
 
 Menu: **System → Audit history**, read-only untuk user aktif. Data: waktu, actor,
 action, entity, ID, before, after, dan IP opsional. Field sensitif di-redact.
+Filter: Action dan Entity.
+
+Klik baris atau **Details** untuk membuka panel detail:
+
+- **Entry**: waktu, actor (beserta email), action, entity, record yang mudah
+  dibaca (misalnya code Client atau `client / job · cron` untuk Schedule;
+  tetap tampil dari snapshot setelah record dihapus), ID, dan IP.
+- **Changes**: tabel per field. Pada `updated`, baris yang berubah disorot,
+  nilai lama berwarna merah dan nilai baru hijau tebal. Pada `created` hanya kolom After,
+  pada `deleted` hanya kolom Before.
 
 Gunakan Audit history untuk **siapa mengubah apa dan kapan**; gunakan Execution
 logs untuk **apa hasil request**.
