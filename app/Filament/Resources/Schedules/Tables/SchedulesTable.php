@@ -4,26 +4,22 @@ namespace App\Filament\Resources\Schedules\Tables;
 
 use App\Enums\RunStatus;
 use App\Filament\Resources\Schedules\Actions\DeleteScheduleAction;
+use App\Filament\Resources\Schedules\Actions\ScheduleBulkActions;
+use App\Filament\Resources\Schedules\Actions\ToggleScheduleAction;
 use App\Models\Schedule;
 use App\Services\CronDescriber;
 use App\Services\Execution\HttpExecutor;
 use App\Services\Scheduling\RunDispatcher;
-use App\Services\Scheduling\ScheduleManager;
-use Cron\CronExpression;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\HtmlString;
 use Throwable;
 
@@ -54,18 +50,10 @@ class SchedulesTable
                         : 'Overlapping runs are allowed.'),
                 IconColumn::make('needs_review')->label('Review')->boolean()->trueColor('warning')->falseIcon('heroicon-o-minus'),
                 IconColumn::make('is_enabled')->label('Enabled')->boolean()
-                    ->action(Action::make('toggleEnabled')
-                        ->authorize(fn (Schedule $record) => auth()->user()->can('toggle', $record))
-                        ->requiresConfirmation()
-                        ->modalHeading(fn (Schedule $record) => ($record->is_enabled ? 'Pause' : 'Resume').' '.$record->client->code.' / '.$record->taskTemplate->key.'?')
-                        ->modalDescription(fn (Schedule $record) => $record->is_enabled
-                            ? 'No new occurrence is created until the schedule is resumed.'
-                            : 'The schedule starts sending HTTP requests to the client on its next occurrence.')
-                        ->modalSubmitActionLabel(fn (Schedule $record) => $record->is_enabled ? 'Pause' : 'Resume')
-                        ->action(fn (Schedule $record, ScheduleManager $manager) => $manager->setEnabled($record, ! $record->is_enabled))),
+                    ->action(ToggleScheduleAction::make()),
             ])
             ->filters([
-                SelectFilter::make('client_id')->relationship('client', 'code')->searchable()->preload()->multiple(),
+                SelectFilter::make('client_id')->label('Client')->relationship('client', 'code')->searchable()->preload()->multiple(),
                 SelectFilter::make('task_template_id')->label('Job')->relationship('taskTemplate', 'key')->searchable()->preload()->multiple(),
                 TernaryFilter::make('is_enabled'),
                 TernaryFilter::make('needs_review'),
@@ -92,36 +80,7 @@ class SchedulesTable
                 ])->label('Actions')->tooltip('Actions')->color('gray'),
             ])
             ->toolbarActions([
-                BulkActionGroup::make([
-                    BulkAction::make('setCron')->label('Set cron in bulk')->icon('heroicon-o-clock')
-                        ->authorize(fn () => auth()->user()->canManage())
-                        ->schema([
-                            TextInput::make('cron_expression')->required()->default('*/5 * * * *')
-                                ->rule(fn () => function (string $attribute, mixed $value, \Closure $fail): void {
-                                    if (! CronExpression::isValidExpression((string) $value)) {
-                                        $fail('The cron expression is not valid.');
-                                    }
-                                }),
-                            Select::make('timezone')->label('Timezone')
-                                ->placeholder('Keep each existing timezone')
-                                ->options(array_combine(timezone_identifiers_list(), timezone_identifiers_list()))
-                                ->searchable(),
-                        ])
-                        ->requiresConfirmation()
-                        ->action(function (Collection $records, array $data, ScheduleManager $manager): void {
-                            $manager->changeTimingBulk($records, $data['cron_expression'], $data['timezone'] ?? null);
-                            Notification::make()->title($records->count().' schedule(s) updated')->success()->send();
-                        })->deselectRecordsAfterCompletion(),
-                    BulkAction::make('resume')->label('Resume selected')->icon('heroicon-o-play')->color('success')
-                        ->requiresConfirmation()->authorize(fn () => auth()->user()->canOperate())
-                        ->action(fn (Collection $records, ScheduleManager $manager) => $manager->setEnabledBulk($records, true))
-                        ->deselectRecordsAfterCompletion(),
-                    BulkAction::make('pause')->label('Pause selected')->icon('heroicon-o-pause')->color('danger')
-                        ->requiresConfirmation()->authorize(fn () => auth()->user()->canOperate())
-                        ->action(fn (Collection $records, ScheduleManager $manager) => $manager->setEnabledBulk($records, false))
-                        ->deselectRecordsAfterCompletion(),
-                    DeleteScheduleAction::bulk(),
-                ]),
+                BulkActionGroup::make(ScheduleBulkActions::all()),
             ]);
     }
 

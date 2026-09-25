@@ -81,7 +81,9 @@ class AuditLogDetailTest extends TestCase
 
         Livewire::actingAs($admin)->test(EditClient::class, ['record' => $schedule->client->getRouteKey()])
             ->assertFormFieldDoesNotExist('review_notes')
-            ->assertFormFieldDoesNotExist('notes');
+            ->assertFormFieldDoesNotExist('notes')
+            ->assertFormFieldDoesNotExist('legacy_config_file')
+            ->assertFormFieldDoesNotExist('legacy_script_dir');
         Livewire::actingAs($admin)->test(EditSchedule::class, ['record' => $schedule->getRouteKey()])
             ->assertFormFieldDoesNotExist('legacy_command');
         Livewire::actingAs($admin)->test(EditTaskTemplate::class, ['record' => $schedule->taskTemplate->getRouteKey()])

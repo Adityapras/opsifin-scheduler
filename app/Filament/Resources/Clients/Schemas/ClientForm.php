@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Clients\Schemas;
 
 use App\Enums\AuthType;
+use App\Filament\Resources\Clients\Actions\TestConnectionAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -53,6 +54,8 @@ class ClientForm
 
                 Section::make('Credentials')
                     ->description('Stored as entered in the database and redacted from run output, logs, previews, and notifications. This form is restricted to administrators.')
+                    ->key('credentials')
+                    ->afterHeader([TestConnectionAction::forForm()])
                     ->columns(2)
                     ->schema([
                         Select::make('auth_type')
@@ -94,20 +97,6 @@ class ClientForm
                             ->helperText('Schedules are created paused by default. Review and resume them after testing the client connection.')
                             ->default(true)
                             ->dehydrated(false),
-                    ]),
-
-                Section::make('Legacy origin')
-                    ->description('Filled in by the importer. For migration tracing only.')
-                    ->collapsed()
-                    ->columns(2)
-                    ->schema([
-                        TextInput::make('legacy_config_file')
-                            ->label('Config file')
-                            ->disabled(),
-
-                        TextInput::make('legacy_script_dir')
-                            ->label('Script folder')
-                            ->disabled(),
                     ]),
             ]);
     }

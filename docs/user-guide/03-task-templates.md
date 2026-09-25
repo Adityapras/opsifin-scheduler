@@ -19,7 +19,7 @@ canonical yang dapat dipakai banyak Client.
 | Connect/Request timeout | Batas koneksi dan seluruh request |
 | Assign to new clients | Provisioning Client baru |
 | Default cron/timezone policy | Timing assignment baru |
-| Enable immediately | State awal assignment baru |
+| Enable immediately | State awal Schedule saat **Create client** saja; Create missing schedules dan Assign jobs selalu paused |
 | Prevent overlapping runs | Overlap policy awal |
 
 Form tersusun dua kolom: **Job template** dan **HTTP request** di kolom lebar,

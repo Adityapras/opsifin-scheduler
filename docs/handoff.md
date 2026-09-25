@@ -8,6 +8,42 @@ sebelum melanjutkan.
 
 ## Status terbaru — Direct Bounded HTTP
 
+### Sesi 25 September 2026 (lanjutan) — Assign jobs per Client
+
+- `DefaultScheduleProvisioner`: `provision()` tetap (Client baru), ditambah
+  `assign(Client, taskIds, ?cron, ?timezone)` yang selalu membuat Schedule paused
+  dan melewati job yang sudah dimiliki (dicek ulang di dalam lock), serta
+  `unassignedTasks()`.
+- `AssignJobsAction` (`forRecord()` di tabel Clients, `forOwner()` di tab) dan
+  `SchedulesRelationManager` di halaman Edit Client. Toggle Pause/Resume
+  diekstrak ke `ToggleScheduleAction` dan dipakai di Schedules + tab.
+- Keputusan user: selalu paused, hanya job yang belum di-assign, lokasi tab +
+  aksi tabel; bulk "Create missing schedules" tetap.
+- Data dev saat dicek: 34 Client, 20 template aktif, 446 Schedule; 32 Client
+  masih kekurangan ≥1 job. Suite 169 passed, 1 skipped. Belum di-commit.
+- Masukan user: tombol Save terlihat menempel ke tabel Schedules. Solusi:
+  `hasCombinedRelationManagerTabsWithContent()` di `EditClient` → tab "Client
+  details" (default, berisi Save) dan "Schedules" (badge jumlah, ikon kalender).
+  Dicek di Chrome pada Client `agi`.
+- Bulk action Schedules (Set cron, Resume, Pause, Delete) diekstrak ke
+  `ScheduleBulkActions::all()` dan dipakai di tabel Schedules + tab Schedules
+  Edit Client. Suite 170 passed, 1 skipped; menu dicek di Chrome tanpa dieksekusi.
+- Bulk "Create missing schedules" sebelumnya mengikuti `default_schedule_enabled`
+  template walau dialog menyebut paused. Sekarang `provisionMissing()` selalu
+  paused; hanya Create client (`provision()`) yang mengikuti "Enable
+  immediately". Saat dicek, 0 dari 20 template menyalakan opsi itu, jadi belum
+  pernah ada Schedule enabled dari jalur ini. Suite 172 passed, 1 skipped.
+
+### Sesi 25 September 2026 (lanjutan) — Test connection di form, label filter
+
+- `TestConnectionAction` (Clients/Actions): `forRecord()` untuk tabel,
+  `forForm()` di header kartu Credentials (Create + Edit) yang menguji nilai form
+  belum tersimpan lewat model sementara (tidak pernah di-save).
+- Label filter `client_id` di Schedules dan Execution logs menjadi "Client".
+- Kartu Legacy origin (legacy_config_file, legacy_script_dir) di form Client
+  disembunyikan; kolom database tetap ada.
+- Suite 162 passed, 1 skipped. Belum di-commit.
+
 ### Sesi 25 September 2026 (lanjutan) — Test connection menguji credential
 
 - `ConnectionTester` sekarang GET `{base_url}` + `opsifin_cron.connection_test_path`

@@ -2,13 +2,13 @@
 
 namespace App\Filament\Resources\Clients\Tables;
 
+use App\Filament\Resources\Clients\Actions\AssignJobsAction;
 use App\Filament\Resources\Clients\Actions\DeleteClientAction;
+use App\Filament\Resources\Clients\Actions\TestConnectionAction;
 use App\Models\Client;
-use App\Services\ConnectionTester;
 use App\Services\Maintenance\ClientDeleter;
 use App\Services\Scheduling\DefaultScheduleProvisioner;
 use App\Services\Scheduling\ScheduleManager;
-use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -90,21 +90,9 @@ class ClientsTable
             ])
             ->recordActions([
                 ActionGroup::make([
-                    Action::make('test')
-                        ->label('Test connection')
-                        ->icon('heroicon-o-signal')
-                        ->color('gray')
-                        ->authorize(fn (Client $record) => auth()->user()->can('test', $record))
-                        ->action(function (Client $record, ConnectionTester $tester) {
-                            $result = $tester->test($record);
+                    TestConnectionAction::forRecord(),
 
-                            Notification::make()
-                                ->title($record->code.' — '.$result['status'])
-                                ->body($result['detail'].' ('.$result['duration_ms'].' ms)')
-                                ->status($result['ok'] ? 'success' : 'danger')
-                                ->persistent()
-                                ->send();
-                        }),
+                    AssignJobsAction::forRecord(),
 
                     EditAction::make(),
                     DeleteClientAction::make(),
@@ -117,10 +105,10 @@ class ClientsTable
                         ->icon('heroicon-o-squares-plus')
                         ->color('primary')
                         ->requiresConfirmation()
-                        ->modalDescription('Creates paused schedules for active services that are not assigned yet. Existing schedules are left unchanged.')
+                        ->modalDescription('For each selected client, creates the missing schedules of every active job set to "Assign to new clients", using the job\'s default cron. They are always created paused, even when the job is set to enable immediately. Existing schedules are left unchanged.')
                         ->authorize(fn () => auth()->user()->canManage())
                         ->action(function (Collection $records, DefaultScheduleProvisioner $provisioner): void {
-                            $created = $records->sum(fn (Client $client): int => $provisioner->provision($client));
+                            $created = $records->sum(fn (Client $client): int => $provisioner->provisionMissing($client));
 
                             Notification::make()
                                 ->title($created.' missing schedule(s) created')

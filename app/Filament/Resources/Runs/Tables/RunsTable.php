@@ -48,7 +48,7 @@ class RunsTable
                 TextColumn::make('error_message')->label('Message')->limit(55)->tooltip(fn (Run $record) => $record->error_message)->placeholder('—')->toggleable(),
             ])
             ->filters([
-                SelectFilter::make('client_id')->relationship('client', 'code')->searchable()->preload()->multiple(),
+                SelectFilter::make('client_id')->label('Client')->relationship('client', 'code')->searchable()->preload()->multiple(),
                 SelectFilter::make('task_template_id')->label('Task')->relationship('taskTemplate', 'key')->searchable()->preload()->multiple(),
                 SelectFilter::make('status')->options(collect(RunStatus::cases())->mapWithKeys(fn ($v) => [$v->value => $v->label()]))->multiple(),
                 SelectFilter::make('trigger')->options(collect(RunTrigger::cases())->mapWithKeys(fn ($v) => [$v->value => $v->label()]))->multiple(),

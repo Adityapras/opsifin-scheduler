@@ -2,8 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Filament\Resources\Clients\Pages\CreateClient;
+use App\Filament\Resources\Clients\Pages\EditClient;
 use App\Filament\Resources\Clients\Pages\ListClients;
+use App\Filament\Resources\Schedules\Pages\ListSchedules;
 use App\Services\ConnectionTester;
+use Filament\Actions\Testing\TestAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
@@ -85,5 +89,45 @@ class ConnectionTesterTest extends TestCase
         Livewire::actingAs($this->user())->test(ListClients::class)
             ->callTableAction('test', $client)
             ->assertNotified($client->code.' — Credentials rejected');
+    }
+
+    public function test_edit_form_tests_unsaved_credentials_without_saving_them(): void
+    {
+        Http::fake(['*' => Http::response('', 200)]);
+        $client = $this->schedule()->client;
+
+        Livewire::actingAs($this->user())
+            ->test(EditClient::class, ['record' => $client->getRouteKey()])
+            ->fillForm(['auth_secret' => 'typed-but-not-saved'])
+            ->callAction(TestAction::make('testConnection')->schemaComponent('credentials'))
+            ->assertNotified($client->code.' — Credentials valid');
+
+        Http::assertSent(fn (Request $request): bool => $request->header('Authorization')[0] === 'Basic '.base64_encode('api-user:typed-but-not-saved'));
+        $this->assertSame('super-secret', $client->fresh()->auth_secret);
+    }
+
+    public function test_create_form_can_test_before_the_client_exists(): void
+    {
+        Http::fake(['*' => Http::response('', 401)]);
+
+        Livewire::actingAs($this->user())
+            ->test(CreateClient::class)
+            ->fillForm([
+                'code' => 'new-client', 'name' => 'New', 'base_url' => 'https://new.example.test',
+                'auth_type' => 'basic', 'auth_username' => 'u', 'auth_secret' => 'p',
+            ])
+            ->callAction(TestAction::make('testConnection')->schemaComponent('credentials'))
+            ->assertNotified('new-client — Credentials rejected');
+
+        Http::assertSent(fn (Request $request): bool => $request->url() === 'https://new.example.test/api/remittanceApi');
+        $this->assertDatabaseMissing('clients', ['code' => 'new-client']);
+    }
+
+    public function test_client_filters_are_labelled_client(): void
+    {
+        $this->schedule();
+
+        Livewire::actingAs($this->user())->test(ListSchedules::class)
+            ->assertTableFilterExists('client_id', fn ($filter): bool => $filter->getLabel() === 'Client');
     }
 }
