@@ -93,9 +93,9 @@ config/opsifin_cron.php                            seluruh knob scheduler
 
 ## Status pekerjaan saat ini
 
-Branch `feat/direct-bounded-http-migration`, **working tree belum di-commit**
-(±39 file modified + ±20 file/folder baru). Isinya migrasi Redis/Horizon →
-Direct Bounded HTTP.
+Branch kerja utama adalah `master`. Migrasi Redis/Horizon → Direct Bounded HTTP
+dan setup Docker development sudah di-merge dan di-push ke `origin/master`
+(25 September 2026); branch `feat/direct-bounded-http-migration` sudah dihapus.
 
 - Fase 0–4 rencana migrasi **selesai** dan tervalidasi lokal (peak 123 @ C=20 dan
   246 @ C=40, 0 missed window). Bukti di `docs/direct-http-validation.md`.
@@ -104,8 +104,9 @@ Direct Bounded HTTP.
 - Default deployment tetap `CRON_EXECUTION_DRIVER=queue` supaya rollback tersedia.
   `.env` development lokal memakai `direct`.
 - Database development: 41 client, 20 template, 470 schedule (0 enabled), 5 run.
-- Tidak ada service berjalan di WSL: tidak ada `supervisord`, `queue:work`,
-  `jobs:work-direct`, maupun cron `schedule:run`.
+- aaPanel di WSL sudah di-uninstall (25 Sep 2026) dan cron `schedule:run`-nya
+  mati. Development berjalan lewat Docker Compose (`docs/docker.md`); scheduler
+  dan direct executor hanya aktif bila profile `workers` dinyalakan.
 
 Pekerjaan berikutnya menurut handoff: ukur durasi endpoint dan resource pada
 VPS/MySQL target, siapkan pilot dan cutover sesuai runbook, baru decommission

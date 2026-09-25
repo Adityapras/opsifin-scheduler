@@ -8,6 +8,91 @@ sebelum melanjutkan.
 
 ## Status terbaru — Direct Bounded HTTP
 
+### Sesi 25 September 2026 (lanjutan) — delete, konfirmasi, dashboard, favicon
+
+Perubahan (belum di-commit):
+
+- **Favicon baru**: `public/images/brand/favicon.svg` (pin lokasi Opsifin + jam,
+  warna brand `#005cc5`/`#ef2d2e`/`#ffd51e`), fallback `favicon.png` 64 px,
+  `apple-touch-icon.png` 180 px, dan `public/favicon.ico` (16/32/48; sebelumnya
+  file 0 byte). Dipasang di `AdminPanelProvider` (favicon + hook `HEAD_END`).
+- **Delete Client**: `ClientDeleter` + `DeleteClientAction` (baris, header Edit)
+  dan bulk `deleteClients`. Ditolak bila Client masih punya Schedule; modal
+  menampilkan jumlah Schedule dan link ke Schedules terfilter Client itu.
+  Alasannya FK `schedules.client_id` cascade, jadi tanpa guard Schedule ikut
+  terhapus diam-diam.
+- **Delete Schedule**: `ScheduleDeleter` + `DeleteScheduleAction` (baris, header
+  Edit, bulk `deleteSchedules`). Ditolak/di-skip bila `running_run_id` terisi.
+  Riwayat Run tetap ada (`schedule_id` null); audit lewat `DomainAuditObserver`.
+- **Konfirmasi**: trait `App\Filament\Concerns\ConfirmsSave` pada semua halaman
+  Edit (Client, Schedule, Task Template, User); konfirmasi juga ditambahkan ke
+  toggle ikon Enabled di Schedules, `assignSelected` Task Template, dan
+  `purgeOldLogs` Runs. Delete bawaan Filament sudah berkonfirmasi.
+- **Dashboard**: `ServerHealth` (database ping, DB connections, dispatcher,
+  direct executor/Redis, backlog, overdue running, failure rate, CPU, memory,
+  disk; tiap check punya langkah mitigasi) → widget `ServerHealthPanel`;
+  `RunActivity` → grafik `RunVolumeChart` (runs/jam per status) dan
+  `RunLatencyChart` (start lag avg/max + durasi avg per jam); tabel
+  `FailingClientsTable` (Client dengan failure 24 jam).
+- Dokumen: `docs/user-guide.md`, `docs/user-guide/01-dashboard-dan-insights.md`,
+  `02-clients.md`, `04-schedules.md`.
+
+Verifikasi 25 Sep 2026:
+
+- Test suite: **143 passed, 1 skipped (573 assertions)**. Dijalankan di image
+  sekali pakai `opsifin-scheduler-test:local` (`php:8.4-cli` + intl, pcntl,
+  bcmath, python3) dengan `--network none`, karena PHP host dan image app tidak
+  punya `pdo_sqlite`. Perintah:
+  `docker run --rm --network none -v "$PWD":/app -w /app opsifin-scheduler-test:local php artisan test`.
+- `vendor/bin/pint --test` pass, `npm run build` sukses, `git diff --check` bersih.
+- Rebuild + recreate container (persetujuan user) selesai ±11:27 WIB, lalu
+  `optimize:clear` + `optimize`. Dicek di Chrome: dashboard (stats, Server
+  health + Mitigation steps, dua grafik, tabel failure) tampil dengan data
+  nyata; modal Delete Client untuk `agi` (15 Schedule) hanya menampilkan
+  Cancel + "Open schedules of this client" dan link-nya memfilter Schedules;
+  modal Delete Schedule tampil lalu di-Cancel (tidak ada data terhapus, total
+  tetap 470). Favicon SVG/ICO ter-serve 200. Konfirmasi Save belum dicek
+  visual (hanya test).
+- Insiden saat rebuild:
+  1. **Executor tidak berhenti saat `docker compose up` (SUDAH DIPERBAIKI).**
+     Compose menunggu `stop_grace_period: 2000s`; executor lama di-`docker kill`
+     atas persetujuan user setelah dicek tidak ada Run aktif. Akar masalah:
+     image turunan `php:8.4-apache` mewarisi `STOPSIGNAL SIGWINCH`, jadi Docker
+     tidak pernah mengirim SIGTERM (handler SIGTERM memang terpasang, tetapi
+     tidak dipanggil). Direproduksi dengan image asli + MySQL sekali pakai di
+     network internal: SIGWINCH → kill paksa setelah grace (exit 137); SIGTERM →
+     exit 0 < 1 detik. Perbaikan: `stop_signal: SIGTERM` pada `scheduler`,
+     `direct-executor`, `horizon` di `docker-compose.yml` + catatan di
+     `docs/docker.md`. Terverifikasi nyata: tiga kali recreate berikutnya
+     selesai 10–12 detik tanpa intervensi. Production (Supervisor
+     `stopsignal=TERM`, lihat `runbook-scheduler-vps.md`) tidak terdampak.
+  2. Container baru ditolak MySQL (1045) karena `.env.docker` diubah 10:40
+     setelah container lama dibuat 10:34; diperbaiki user. Scheduler/QA2 down
+     ±11:14–11:27 WIB; Run #271 (Schedule 2959, 11:21) `skipped` karena
+     missed start window, tanpa replay.
+- Minor: label chip filter di Schedules tampil "Client id: agi" (belum diubah).
+
+Putaran kedua (25 Sep 2026, belum di-commit):
+
+- Task Template: kartu Migration trace (legacy_job_file, gateway, needs_review,
+  review_notes) disembunyikan; form jadi 3 kolom (Job template + HTTP request
+  lebar, Default schedule + Timeouts di samping).
+- Clients: kartu Review & notes disembunyikan. Schedules: kartu Migration trace
+  disembunyikan. Data kolomnya tetap ada; filter/kolom Review di tabel tetap.
+  Konsekuensi: `needs_review` tidak bisa lagi diubah dari form Client/Template.
+- User management: Profile (avatar kiri, identitas kanan) lebar 2/3, Security
+  1/3.
+- Audit history: `AuditLogPresenter` + infolist slide-over **Details** (klik
+  baris), tabel perubahan per field dengan highlight, label record dari snapshot,
+  dan filter Entity.
+- Audit detail juga menyamakan format nilai: string JSON di-decode seperti
+  array, dan timestamp ISO UTC di snapshot `before` ditampilkan dalam waktu lokal.
+- Verifikasi: 148 passed, 1 skipped (595 assertions) di image test; Pint, build,
+  diff-check bersih. Sudah di-deploy ke container (rebuild ±14:00–14:20 WIB) dan
+  dicek di Chrome: form Task Template dua kolom tanpa Migration trace, Profile
+  user, dan panel Details audit (Entry + Changes, record `qa2 / repost · cron`).
+  Form Client/Schedule yang disembunyikan hanya dicek lewat test.
+
 ### Sesi 25 September 2026 — setup Docker
 
 - Ditambahkan `docker/` (Dockerfile PHP 8.4 + Apache, entrypoint, vhost, ini),
@@ -24,7 +109,11 @@ sebelum melanjutkan.
   (crontab root tidak dicek). Path `$PHP=/www/server/php/84/bin/php` di
   `CLAUDE.md` sudah tidak valid; PHP host sekarang `/bin/php` 8.4.
 - Belum dijalankan: profile `workers` (scheduler + direct executor), import DB,
-  migration, test suite terhadap MySQL 5.7. Tidak ada commit.
+  migration, test suite terhadap MySQL 5.7.
+- Setup Docker di-commit sebagai `5286229`, lalu `master` di-fast-forward ke
+  branch `feat/direct-bounded-http-migration` dan di-push ke `origin/master`.
+  Branch feature dihapus di lokal dan origin. Mulai sesi ini kerja di `master`;
+  catatan "working tree belum di-commit" di bagian arsip handoff sudah basi.
 
 ### Sesi 14 September 2026 — QA2 Schedule 2959 diaktifkan user
 
