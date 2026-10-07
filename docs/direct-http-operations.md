@@ -30,7 +30,7 @@ callback lain tetap diproses dan final sweep/deadline menutup Run yang tersisa.
 | Konfigurasi | Default | Arti |
 | --- | ---: | --- |
 | `CRON_EXECUTION_DRIVER` | `queue` | `queue` atau `direct`; restart proses setelah berubah |
-| `CRON_DIRECT_CONCURRENCY` | 20 | Maksimum request aktif pada pool global |
+| `CRON_DIRECT_CONCURRENCY` | 30 | Maksimum request aktif pada pool global |
 | `CRON_DIRECT_BATCH_LIMIT` | 250 | Kandidat per admission pass; total maksimum pada `--once` |
 | `CRON_DIRECT_POLL_INTERVAL_MS` | 500 | Polling saat tidak ada kandidat, dan recovery |
 | `CRON_DIRECT_IDLE_DELAY_MS` | 500 | Sleep ketika pool kosong |
@@ -82,10 +82,12 @@ Urutan cutover setelah readiness production disetujui:
 6. Periksa Run Now, hasil HTTP, health, start lag, CPU/RAM/DB/socket/network;
    monitor satu peak lengkap dan soak period sebelum memperluas schedule aktif.
 
-Concurrency 20 terbukti pada fixture 123 Run berdurasi 5 detik, bukan jaminan
-production. Projected 246 diuji dengan concurrency 40. Jika seluruh request
-mencapai timeout 60 detik, 20 slot tidak cukup untuk memulai 123 Run dalam
-55 detik; sisanya akan skipped. Ukur durasi production sebelum cutover;
+Default concurrency 30 (diputuskan 7 Oktober 2026) berada di antara dua titik
+yang sudah diuji: 20 terbukti pada fixture 123 Run berdurasi 5 detik dan 40 pada
+projected 246; nilai 30 sendiri belum dijalankan capacity test-nya. Dengan 30
+slot, 123 Run butuh 5 gelombang sehingga durasi rata-rata request harus di bawah
+sekitar 13 detik agar semua mulai dalam 55 detik. Jika seluruh request mencapai
+timeout 60 detik, 30 slot tidak cukup; sisanya akan skipped. Ukur durasi production sebelum cutover;
 fixture lokal tidak menetapkan p95/p99 production.
 
 ## Health dan troubleshooting

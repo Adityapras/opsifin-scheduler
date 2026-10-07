@@ -179,8 +179,9 @@ sudo supervisorctl status opsifin-scheduler-direct
 
 ## 5. Sizing sebelum enable
 
-Concurrency default `CRON_DIRECT_CONCURRENCY=20` terbukti untuk peak 123 Run
-dengan endpoint 5 detik pada pengujian loopback, bukan pada endpoint production.
+Concurrency default `CRON_DIRECT_CONCURRENCY=30`. Pengujian loopback dengan
+endpoint 5 detik membuktikan C=20 untuk peak 123 Run dan C=40 untuk 246 Run;
+keduanya bukan pengukuran endpoint production.
 Ukur dulu durasi endpoint sebenarnya.
 
 Syarat agar semua Run mulai di dalam start window:
@@ -189,8 +190,8 @@ Syarat agar semua Run mulai di dalam start window:
 (ceil(N / C) - 1) × d  ≤  start_window
 ```
 
-Dengan N = 123 dan window 55 detik pada C = 20, durasi endpoint rata-rata harus
-di bawah 9,1 detik. Bila p95 endpoint production lebih lambat, naikkan `C`
+Dengan N = 123 dan window 55 detik pada C = 30, durasi endpoint rata-rata harus
+di bawah 13,75 detik (C = 20: 9,1 detik; C = 40: 18,3 detik). Bila p95 endpoint production lebih lambat, naikkan `C`
 sebelum enable; window tidak dapat dinaikkan karena wajib di bawah 60 detik.
 Penjelasan lengkap ada di
 [direct-bounded-http-migration-plan.md](direct-bounded-http-migration-plan.md).

@@ -548,7 +548,7 @@ replay direct failure/ambiguous Run. Migration compatibility tidak perlu di-down
 | Variable | Default | Arti |
 | --- | ---: | --- |
 | `CRON_EXECUTION_DRIVER` | `queue` | Global `queue`/`direct` |
-| `CRON_DIRECT_CONCURRENCY` | 20 | Active HTTP maksimum |
+| `CRON_DIRECT_CONCURRENCY` | 30 | Active HTTP maksimum |
 | `CRON_DIRECT_BATCH_LIMIT` | 250 | Kandidat admission/once |
 | `CRON_DIRECT_POLL_INTERVAL_MS` | 500 | Poll/recovery |
 | `CRON_DIRECT_IDLE_DELAY_MS` | 500 | Delay pool kosong |

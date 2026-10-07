@@ -5,7 +5,7 @@ return [
     // Keep queue as the deployment default during the rollback window.
     'execution_driver' => env('CRON_EXECUTION_DRIVER', 'queue'),
     'direct' => [
-        'concurrency' => (int) env('CRON_DIRECT_CONCURRENCY', 20),
+        'concurrency' => (int) env('CRON_DIRECT_CONCURRENCY', 30),
         'batch_limit' => (int) env('CRON_DIRECT_BATCH_LIMIT', 250),
         'poll_interval_ms' => (int) env('CRON_DIRECT_POLL_INTERVAL_MS', 500),
         'start_window_sec' => (int) env('CRON_DIRECT_START_WINDOW_SEC', 55),
