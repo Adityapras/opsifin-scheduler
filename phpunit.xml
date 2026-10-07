@@ -18,26 +18,26 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
-        <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/>
-        <env name="APP_CONFIG_CACHE" value="/tmp/opsifin-crontab-test-config.php"/>
-        <env name="APP_ROUTES_CACHE" value="/tmp/opsifin-crontab-test-routes.php"/>
-        <env name="APP_EVENTS_CACHE" value="/tmp/opsifin-crontab-test-events.php"/>
-        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
-        <env name="BCRYPT_ROUNDS" value="4"/>
-        <env name="BROADCAST_CONNECTION" value="null"/>
-        <env name="CACHE_STORE" value="array"/>
-        <env name="CRON_EXECUTION_DRIVER" value="queue"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
-        <env name="MAIL_MAILER" value="array"/>
-        <env name="QUEUE_CONNECTION" value="database"/>
-        <env name="SESSION_DRIVER" value="array"/>
-        <env name="PULSE_ENABLED" value="false"/>
-        <env name="TELESCOPE_ENABLED" value="false"/>
-        <env name="TRUSTED_PROXIES" value="127.0.0.1"/>
-        <env name="NIGHTWATCH_ENABLED" value="false"/>
-        <env name="VIEW_COMPILED_PATH" value="/tmp/opsifin-crontab-test-views"/>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" force="true"/>
+        <env name="APP_CONFIG_CACHE" value="/tmp/opsifin-crontab-test-config.php" force="true"/>
+        <env name="APP_ROUTES_CACHE" value="/tmp/opsifin-crontab-test-routes.php" force="true"/>
+        <env name="APP_EVENTS_CACHE" value="/tmp/opsifin-crontab-test-events.php" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="CRON_EXECUTION_DRIVER" value="queue" force="true"/>
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="database" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="TRUSTED_PROXIES" value="127.0.0.1" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+        <env name="VIEW_COMPILED_PATH" value="/tmp/opsifin-crontab-test-views" force="true"/>
     </php>
 </phpunit>
