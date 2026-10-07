@@ -1,12 +1,125 @@
 # Current Handoff — Opsifin Scheduler
 
-Last updated: **25 September 2026, Asia/Jakarta**
+Last updated: **7 Oktober 2026, Asia/Jakarta**
 
 Ini adalah memory utama lintas sesi. Baca file ini,
 [`../CLAUDE.md`](../CLAUDE.md), dan [`architecture.md`](architecture.md)
 sebelum melanjutkan.
 
 ## Status terbaru — Direct Bounded HTTP
+
+### Sesi 7 Oktober 2026 — database dev terhapus, restore, sync crontab
+
+**Insiden.** `php artisan test` dijalankan Claude lewat `docker compose exec web`.
+Env container (`DB_CONNECTION=mysql`, `DB_DATABASE=opsifin_cron`) menang atas
+`<env>` di `phpunit.xml` (tanpa `force="true"`), sehingga `RefreshDatabase`
+menjalankan migrate:fresh pada MySQL dev (±03:24 UTC). Binlog OFF.
+**Jangan menjalankan test di container `web`/`scheduler`/`direct-executor`**
+sampai `phpunit.xml` diberi `force="true"` untuk `DB_*` (belum dikerjakan).
+
+**Pemulihan (terverifikasi 7 Okt):**
+
+- Restore `storage/app/backups/recovered-opsifin-cron-20260911.sql` →
+  41 client, 20 template, 470 schedule, 5 run, 1 user. Skema kolom identik
+  dengan migration terbaru; tidak ada migration pending. Enam tabel arsitektur
+  lama ikut terbawa backup (tidak dipakai).
+- SQL `crontab-sync-2026-10-01.sql` tidak bisa dipakai apa adanya (28 dari 31
+  ID dibuat setelah 11 Sep). Sebagai gantinya: `DefaultScheduleProvisioner::assign`
+  untuk 32 client yang ada di daftar 1 Okt, cron `*/5 * * * *`, paused →
+  260 schedule baru (cocok dengan tabel "dibiarkan as is" di dokumen 1 Okt).
+  Lalu 5 UPDATE ber-guard dari `crontab.txt` (#3413, #3419, #3435, #3461,
+  #3509), backup row di `schedules_bak_20261007`.
+- Hasil: 730 schedule, 0 enabled. Perbandingan ulang dengan `crontab.txt`:
+  342 pasangan + 55 baris multi-schedule SAMA; sisa satu beda = #2959.
+- Backup sebelum sync: `storage/app/backups/before-crontab-sync-20261007-*.sql`.
+
+**Lanjutan atas persetujuan user (7 Okt):**
+
+- 9 client yang sudah tidak ada pada 1 Okt dihapus lewat `ScheduleDeleter` +
+  `ClientDeleter` (63 schedule): aimhigh, goldenmiles, henira, ketapang,
+  qaAladin, qaTX, wjTour, psa-gw, firman_travel. Backup sebelumnya:
+  `storage/app/backups/before-client-cleanup-20261007-*.sql`.
+- Client `excape` (id 322) dibuat ulang: `base_url` `https://excape.opsifin.com`
+  ditebak dari pola client gateway lain, credential kosong, `needs_review=1`.
+  20 schedule paused via `assign`, lalu 14 UPDATE dari `crontab.txt`
+  (identik dengan blok excape di SQL 1 Okt), backup `schedules_bak_20261007_excape`.
+- Hasil akhir: 33 client, 687 schedule (660 + 27 pasangan multi-baris),
+  0 enabled. Semua pasangan ber-baris crontab SAMA kecuali #2959.
+- `web`, `scheduler`, `direct-executor` di-recreate; config aktif
+  `concurrency=30`, driver `direct`, 0 pending Run.
+
+**Belum kembali / menunggu keputusan user:**
+
+- #2959 qa2/repost: DB `1-59/3`, paused (sebelumnya enabled sejak 14 Sep,
+  `1-59/10` sejak 25 Sep). `crontab.txt` = `1-59/5`. User minta tidak ada
+  schedule yang diaktifkan.
+- Credential dan base URL `excape` perlu diisi/diverifikasi user.
+- Rename kode `hitstravel`→`hits_travel`, `mncTravel`→`mnc_travel` belum diulang.
+- Edit client/credential/user lewat panel setelah 11 Sep dan riwayat Run hilang.
+
+**Concurrency.** Default `CRON_DIRECT_CONCURRENCY` diubah 20 → 30 (config,
+`.env*`, CLAUDE.md, docs operasi/teknis/runbook VPS). Nilai 30 belum di-capacity
+test. Container sudah di-recreate; config aktif `concurrency=30`.
+
+**Pengaman test (7 Okt, terverifikasi):**
+
+- `phpunit.xml`: seluruh `<env>` memakai `force="true"`.
+- `tests/TestCase.php::createApplication()` melempar exception bila koneksi
+  bukan sqlite `:memory:`, sebelum trait `RefreshDatabase` jalan. Diuji dengan
+  config cache palsu menunjuk MySQL tak terjangkau (`guard_check`): 3/3 test
+  ditolak "Refusing to run tests against [mysql:guard_check]".
+- Cara menjalankan test: container sekali pakai `--network none` (CLAUDE.md
+  aturan 4a). Hasil 7 Okt: **166 passed, 7 failed**. Ketujuhnya
+  `DirectExecutorProcessTest` (3) dan `DirectHttpIntegrationTest` (4) gagal
+  `proc_open python3: No such file` — image tidak punya `python3`; PHP host
+  tidak punya `pdo_sqlite`. Belum ada lingkungan yang menjalankan 7 test itu.
+- Pint `--test` dan `git diff --check` lulus.
+- Snapshot DB akhir hari: `storage/app/backups/snapshot-end-of-day-20261007-1626.sql`.
+
+**Deploy VPS 2 GB.** Panduan baru
+[`deployment-vps-nginx-2gb.md`](deployment-vps-nginx-2gb.md): Nginx + PHP 8.4-FPM
++ MySQL 8.0 lokal (binlog ON, user runtime tanpa DDL, user migrator terpisah),
+driver direct via systemd, backup harian. Belum dijalankan di VPS mana pun.
+Belum di-commit.
+
+### Sesi 1 Oktober 2026 (lanjutan) — Viewer laravel-brain di Docker port 8060
+
+- `laramint/laravel-brain` ^2.7 ditambahkan ke `require-dev` (`composer.json`/
+  `composer.lock`). Viewer: `http://localhost:8060/_laravel-brain`.
+- `docker/Dockerfile`: build arg `COMPOSER_DEV` (default `false` = perilaku
+  lama `--no-dev`). `docker-compose.yml` meneruskan
+  `COMPOSER_DEV: ${OPSIFIN_COMPOSER_DEV:-false}`; `.env` host lokal diberi
+  `OPSIFIN_COMPOSER_DEV=true`. Image yang sama dipakai `scheduler` dan
+  `direct-executor`, jadi ketiganya kini membawa paket dev.
+- `docker/apache/vhost.conf`: aturan blok dotfile diberi pengecualian sempit
+  `/_laravel-brain/.graph-*.json` (viewer memuat graph dari path itu).
+  Diverifikasi 1 Okt 17:30: manifest 200, `/.env` dan `/.git/config` tetap 403,
+  `/admin/login` 200, POST `/_laravel-brain/api/scan` 200.
+- Scan CLI wajib sebagai `www-data`:
+  `docker compose exec -u www-data web php artisan brain:scan`. Scan sebagai
+  root membuat `storage/app/laravel-brain` tidak bisa ditulis web (500).
+- Graph tersimpan di volume `opsifin-cron-storage`; perubahan kode baru terlihat
+  setelah `docker compose build` + recreate + scan ulang.
+- Belum: commit, update `docs/docker.md`, dan cek occurrence QA2 #2959 setelah
+  recreate worker pukul 17:13 (`jobs:direct-status` sebelum recreate sudah
+  membawa alert lama "1 missed start window 24 jam").
+
+### Sesi 1 Oktober 2026 — Sinkronisasi cron dari `crontab.txt`
+
+- User menaruh `crontab.txt` (crontab server lama terbaru, untracked) di root.
+  Dipetakan ke `schedules` (33 Client × 20 template = 660 row, satu row per
+  pasangan): 385 punya padanan, 32 berbeda, 275 dibiarkan as is, 48 baris
+  crontab tanpa Task Template/Client (terutama `updateTokenOpsigo`,
+  `update_token_bca`).
+- Hasil: [`crontab-sync-2026-10-01.md`](crontab-sync-2026-10-01.md) dan
+  [`sql/crontab-sync-2026-10-01.sql`](sql/crontab-sync-2026-10-01.sql) — 31
+  UPDATE ber-guard `cron_expression` + backup `schedules_bak_20261001`;
+  #2959 (enabled, QA2) dipisah sebagai blok opsional yang dikomentari.
+- SQL **belum dijalankan ke DB**; user akan menjalankannya sendiri. Dry-run
+  pada salinan `TEMPORARY TABLE` satu sesi: 31 row affected, verifikasi 31,
+  DB asli dicek tidak berubah.
+- Terbuka: timezone (pola `3-23,0-1` mengisyaratkan server lama UTC, schedule
+  memakai `Asia/Jakarta`), enable bertahap, Task Template untuk script token.
 
 ### Sesi 25 September 2026 (lanjutan) — Assign jobs per Client
 

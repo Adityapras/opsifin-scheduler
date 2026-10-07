@@ -17,10 +17,12 @@ blok kode kepada pengguna.
 | Melihat arsitektur ringkas | [Architecture](architecture.md) |
 | Menjalankan scheduler di WSL + aaPanel | [Runbook aaPanel](runbook-scheduler-aapanel.md) |
 | Menjalankan scheduler di VPS production | [Runbook VPS](runbook-scheduler-vps.md) |
+| Deploy VPS 2 GB: Nginx + PHP 8.4-FPM + MySQL lokal, driver direct | [Deployment VPS 2 GB](deployment-vps-nginx-2gb.md) |
 | Mengoperasikan Direct HTTP | [Direct HTTP Operations](direct-http-operations.md) |
 | Melihat bukti pengujian | [Direct HTTP Validation](direct-http-validation.md) |
 | Menangani operasi umum | [Operations Runbook](operations.md) |
 | Menjalankan aplikasi di Docker (WSL2) | [Docker](docker.md) |
+| Sinkronisasi cron dari `crontab.txt` (1 Okt 2026) | [Crontab Sync](crontab-sync-2026-10-01.md) + [SQL](sql/crontab-sync-2026-10-01.sql) |
 | Melanjutkan pekerjaan lintas sesi | [Current Handoff](handoff.md) |
 
 ## Struktur user guide

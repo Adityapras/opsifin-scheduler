@@ -17,6 +17,13 @@ Langgar salah satu dari ini dan data produksi/development bisa hilang:
 3. **Jangan** mengubah crontab legacy di `/home/aditya_prasetyo/project/crontab-legacy`.
    Folder itu read-only source untuk importer.
 4. **Jangan** commit, push, atau deploy tanpa persetujuan user.
+4a. **Jangan** menjalankan `artisan test` di container `web`/`scheduler`/
+   `direct-executor` atau di server: env container pernah mengarahkan
+   `RefreshDatabase` ke MySQL dev dan menghapusnya (7 Okt 2026). Jalankan test
+   di container sekali pakai tanpa jaringan:
+   `docker run --rm --network none -u $(id -u):$(id -g) -e HOME=/tmp -v "$PWD":/app -w /app --entrypoint php opsifin-scheduler:local artisan test`.
+   `phpunit.xml` kini `force="true"` dan `tests/TestCase.php` menolak koneksi
+   selain sqlite `:memory:`; jangan melepas keduanya.
 5. **Jangan** mengirim HTTP ke endpoint Client asli untuk pengujian. Pakai loopback
    fixture (`tests/Support/direct_http_fixture.py`). Smoke test ke endpoint nyata
    hanya setelah user menyetujui endpoint mana yang harmless.
@@ -35,8 +42,8 @@ PHP=/www/server/php/84/bin/php
 
 | Tujuan | Perintah |
 | --- | --- |
-| Test suite | `$PHP artisan test` (harapan: 120 passed, 447 assertions, 1 skipped) |
-| Satu file test | `$PHP artisan test --filter=DirectPoolExecutorTest` |
+| Test suite | container sekali pakai di aturan 4a (7 Okt 2026: 166 passed, 7 gagal karena image tanpa `python3` untuk fixture loopback) |
+| Satu file test | perintah aturan 4a + `--filter=DirectPoolExecutorTest` |
 | Capacity test opt-in | `DIRECT_HTTP_LOAD_RUNS=123 DIRECT_HTTP_LOAD_DELAY=5 DIRECT_HTTP_LOAD_CONCURRENCY=20 $PHP artisan test --filter=test_opt_in_capacity_scenario` |
 | Code style | `$PHP vendor/bin/pint` (preset Laravel default, tanpa `pint.json`) |
 | Cek style saja | `$PHP vendor/bin/pint --test` |
@@ -69,7 +76,7 @@ Prinsip yang tidak boleh dilanggar tanpa keputusan user baru:
 - satu occurrence gagal bersifat **terminal**; tidak ada automatic retry;
 - tidak ada catch-up occurrence yang terlewat;
 - overlap dijaga slot atomic `schedules.running_run_id`, bukan file lock;
-- concurrency direct wajib bounded (`CRON_DIRECT_CONCURRENCY`, default 20);
+- concurrency direct wajib bounded (`CRON_DIRECT_CONCURRENCY`, default 30);
 - response/error wajib melewati redaction credential sebelum disimpan;
 - tidak ada incident engine, blackout, runtime override per client, atau watchdog
   internal. Folder `app/Filament/Resources/{Alerts,AlertRules,BlackoutWindows,
@@ -119,7 +126,7 @@ Seluruh knob ada di `config/opsifin_cron.php`; tabel penjelasannya di
 
 ```text
 CRON_EXECUTION_DRIVER        queue | direct   (restart proses setelah diubah)
-CRON_DIRECT_CONCURRENCY      20               request aktif maksimum
+CRON_DIRECT_CONCURRENCY      30               request aktif maksimum
 CRON_DIRECT_START_WINDOW_SEC 55               wajib < 60
 CRON_DIRECT_RESPONSE_MAX_BYTES 65536          prefix body di memori
 CRON_RESPONSE_EXCERPT_LENGTH 2000             batas karakter di DB setelah redaction
