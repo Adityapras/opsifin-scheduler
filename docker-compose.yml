@@ -23,6 +23,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        # true = ikut install require-dev (laravel-brain di /_laravel-brain).
+        COMPOSER_DEV: ${OPSIFIN_COMPOSER_DEV:-false}
     container_name: opsifin-cron-web
     ports:
       - "${OPSIFIN_CRON_PORT:-8060}:80"

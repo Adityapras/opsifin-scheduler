@@ -18,11 +18,14 @@ COPY docker/apache/vhost.conf /etc/apache2/sites-available/000-default.conf
 WORKDIR /var/www/html
 
 # ---- Vendor: composer install tanpa dev dependency ----
+# COMPOSER_DEV=true hanya untuk image development (mis. viewer laravel-brain).
 FROM base AS vendor
 
+ARG COMPOSER_DEV=false
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-interaction --no-progress --no-scripts --no-autoloader --prefer-dist
+RUN composer install $([ "$COMPOSER_DEV" = "true" ] || echo --no-dev) \
+    --no-interaction --no-progress --no-scripts --no-autoloader --prefer-dist
 
 # ---- Assets: Vite build. Theme Filament meng-import CSS dari vendor/filament ----
 FROM node:22-alpine AS assets
@@ -39,12 +42,13 @@ RUN npm run build
 # ---- Runtime ----
 FROM base AS runtime
 
+ARG COMPOSER_DEV=false
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 COPY --from=vendor /var/www/html/vendor ./vendor
 COPY --chown=www-data:www-data . .
 COPY --from=assets /app/public/build ./public/build
 
-RUN composer dump-autoload --no-dev --optimize --classmap-authoritative \
+RUN composer dump-autoload $([ "$COMPOSER_DEV" = "true" ] || echo --no-dev) --optimize --classmap-authoritative \
     && php artisan package:discover --ansi \
     && chown -R www-data:www-data bootstrap/cache storage
 
