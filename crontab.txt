@@ -1,0 +1,530 @@
+# -- Golden Nusa
+*/6 * * * * /home/ubuntu/cron/gn/repost.sh 2>&1 >> /home/ubuntu/cronlog/repost_gn.log
+*/7 * * * * /home/ubuntu/cron/gn/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/gn/kill_process_timeout.sh
+*/50 * * * * /home/ubuntu/cron/gn/update_token_bca.sh
+0 5 * * * /home/ubuntu/cron/gn/post_log_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_gn_request.log
+10 5 * * * /home/ubuntu/cron/gn/repost_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_gn_repost.log
+*/59 * * * * /home/ubuntu/cron/gn/updateTokenOpsigo.sh
+*/5 * * * * /usr/bin/flock -n /tmp/gn_post_invoice.lock /home/ubuntu/cron/gn/postInvoice.sh
+*/5 12-13,18-19,0-3 * * * /usr/bin/flock -n /tmp/gn_e_invoice.lock /home/ubuntu/cron/gn/e_invoice.sh
+*/2 * * * * /home/ubuntu/cron/gn/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/gn/updateExpiredUser.sh
+2 5 * * * /home/ubuntu/cron/gn/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/gn/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/gn/billingFile.sh
+#0 5 * * * /home/ubuntu/cron/gn/recuring.sh
+#0 0 * * * /home/ubuntu/cron/gn/updateStatusAutoPrintBilling.sh
+0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh gnj recurring
+#*/5 * * * * /home/ubuntu/cron/gateway.sh gnj auto_summary
+
+# -- Mister Aladin
+*/5 3-23,0-1 * * * /home/ubuntu/cron/aladin/repost.sh
+*/7 * * * * /home/ubuntu/cron/aladin/update_balance_trx.sh
+*/5 21-23,0-1 * * * /usr/bin/flock -n /tmp/aladin_e_invoice.lock /home/ubuntu/cron/aladin/e_invoice.sh
+*/2 3-23,0-1 * * * /home/ubuntu/cron/aladin/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/aladin/updateExpiredUser.sh
+0 11,15,18 * * * /home/ubuntu/cron/aladin/autoMailCRLimit.sh
+1 5 * * * /home/ubuntu/cron/aladin/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/aladin/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/aladin/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/aladin/recuring.sh
+#1 5 * * * /home/ubuntu/cron/aladin/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh mna recurring
+
+# -- Vayatour
+*/5 3-23,0-1 * * * /home/ubuntu/cron/vaya/repost.sh 2>&1 >> /home/ubuntu/cronlog/repost_vaya.log
+*/7 3-23,0-1 * * * /home/ubuntu/cron/vaya/update_balance_trx.sh
+#*/1 6-18 * * * /home/ubuntu/cron/vaya/kill_process_timeout.sh
+#*/50 3-23,0-1 * * * /home/ubuntu/cron/vaya/update_token_bca.sh
+0 5 * * * /home/ubuntu/cron/vaya/post_log_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_vaya_request.log
+10 5 * * * /home/ubuntu/cron/vaya/repost_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_vaya_repost.log
+#*/5 21-23,0-1 * * * /home/ubuntu/cron/vaya/e_invoice.sh
+#0 21 * * * /home/ubuntu/cron/vaya/autoMailSP.sh
+#*/59 3-23,0-1 * * * /home/ubuntu/cron/vaya/updateTokenOpsigo.sh
+#*/5 19-23,0-1 * * * /home/ubuntu/cron/vaya/postInvoice.sh
+#0 1,12 * * 5 /home/ubuntu/cron/vaya/draftBilling.sh
+#*/2 6-20 * * * /home/ubuntu/cron/vaya/updatePrintNoHardCopy.sh
+#0 21 * * * /home/ubuntu/cron/vaya/updateExpiredUser.sh
+#0 0 * * * /home/ubuntu/cron/vaya/clearInactiveTempIssued.sh
+#0 0 * * * /home/ubuntu/cron/vaya/clearSharedFolderOpsigo.sh
+#0 0 * * * /home/ubuntu/cron/vaya/updateStatusAutoPrintBilling.sh
+
+# -- Kia Tours
+*/6 * * * * /home/ubuntu/cron/kia/repost.sh
+*/7 * * * * /home/ubuntu/cron/kia/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/kia/kill_process_timeout.sh
+*/2 * * * * /home/ubuntu/cron/kia/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/kia/updateExpiredUser.sh
+2 5 * * * /home/ubuntu/cron/kia/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/kia/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/kia/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/kia/recuring.sh
+#0 0 * * * /home/ubuntu/cron/kia/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh kiaxxx recurring
+
+# -- TX Travel
+*/2 * * * * /home/ubuntu/cron/tx/repost.sh
+*/7 * * * * /home/ubuntu/cron/tx/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/tx/kill_process_timeout.sh
+*/2 * * * * /home/ubuntu/cron/tx/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/tx/updateExpiredUser.sh
+2 5 * * * /home/ubuntu/cron/tx/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/tx/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/tx/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/tx/recuring.sh
+#0 0 * * * /home/ubuntu/cron/tx/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh tx recurring
+
+# -- Mitra Tours
+*/2 * * * * /home/ubuntu/cron/mitra/repost.sh
+*/7 * * * * /home/ubuntu/cron/mitra/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/mitra/kill_process_timeout.sh
+*/5 * * * * /usr/bin/flock -n /tmp/mitra_post_invoice.lock /home/ubuntu/cron/mitra/postInvoice.sh
+*/59 * * * * /home/ubuntu/cron/mitra/updateTokenOpsigo.sh
+*/2 * * * * /home/ubuntu/cron/mitra/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/mitra/updateExpiredUser.sh
+2 5 * * * /home/ubuntu/cron/mitra/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/mitra/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/mitra/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/mitra/recuring.sh
+#0 0 * * * /home/ubuntu/cron/mitra/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh mtt recurring
+*/10 1,4-5 * * * /usr/bin/flock -n /tmp/mtt_auto_billing.lock /home/ubuntu/cron/gateway.sh mtt auto_billing
+
+
+# -- MNC Travel
+*/6 3-23,0-1 * * * /home/ubuntu/cron/mncTravel/repost.sh
+*/7 3-23,0-1 * * * /home/ubuntu/cron/mncTravel/update_balance_trx.sh
+#*/1 6-18 * * * /home/ubuntu/cron/mncTravel/kill_process_timeout.sh
+*/59 3-23,0-1 * * * /home/ubuntu/cron/mncTravel/updateTokenOpsigo.sh
+*/5 19-23,0-1 * * * /usr/bin/flock -n /tmp/mnc_post_invoice.lock /home/ubuntu/cron/mncTravel/postInvoice.sh
+*/5 21-23,0-1 * * * /usr/bin/flock -n /tmp/mnc_travel_e_invoice.lock /home/ubuntu/cron/mncTravel/e_invoice.sh
+*/2 6-18 * * * /home/ubuntu/cron/mncTravel/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/mncTravel/updateExpiredUser.sh
+0 9 * * 3,5 /home/ubuntu/cron/mncTravel/autoMailCRLimit.sh
+1 5 * * * /home/ubuntu/cron/mncTravel/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/mncTravel/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/mncTravel/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/mncTravel/recuring.sh
+#0 0 * * * /home/ubuntu/cron/mncTravel/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh mnc recurring
+*/10 1,4-5 * * * /usr/bin/flock -n /tmp/mnc_auto_billing.lock /home/ubuntu/cron/gateway.sh mnc auto_billing
+
+# -- Qa2
+#*/7 * * * * /home/ubuntu/cron/qa2/kill_process.sh
+*/7 * * * * /home/ubuntu/cron/qa2/update_balance_trx.sh
+#*/5 21-23,0-1 * * * /home/ubuntu/cron/qa2/e_invoice.sh
+#*/10 * * * * /home/ubuntu/cron/qa2/autoMailSP.sh
+1-59/5 * * * * /home/ubuntu/cron/qa2/repost.sh
+#*/59 * * * * /home/ubuntu/cron/qa2/updateTokenOpsigo.sh
+#*/5 * * * * /home/ubuntu/cron/qa2/postInvoice.sh
+#*/5 * * * * /home/ubuntu/cron/qa2/postInvoiceVoid.sh
+#0 1,12 * * 4 /home/ubuntu/cron/qa2/draftBilling.sh
+#*/5 * * * * /home/ubuntu/cron/qa2/post_log_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_qa2_request.log                                                                                  
+#*/5 * * * * /home/ubuntu/cron/qa2/repost_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_qa2_repost.log
+#0 0 * * * /home/ubuntu/cron/qa2/clearInactiveTempIssued.sh
+#0 0 * * * /home/ubuntu/cron/qa2/clearSharedFolderOpsigo.sh
+#*/5 * * * * /home/ubuntu/cron/qa2/generateBillingFile.sh
+#0 0 * * * /home/ubuntu/cron/qa2/updateStatusAutoPrintBilling.sh
+#*/5 * * * * /home/ubuntu/cron/gateway.sh qa2 auto_summary
+
+# -- Qa1
+#*/7 * * * * /home/ubuntu/cron/qa2/kill_process.sh
+#*/7 * * * * /home/ubuntu/cron/qa1/update_balance_trx.sh
+
+# -- Dev5
+#*/6 * * * * /home/ubuntu/cron/dev5/repost.sh
+#*/7 * * * * /home/ubuntu/cron/dev5/update_balance_trx.sh
+
+# -- QaTX
+#*/6 * * * * /home/ubuntu/cron/qaTX/repost.sh
+
+# -- Wisman
+*/2 * * * * /home/ubuntu/cron/wisman/repost.sh
+*/7 * * * * /home/ubuntu/cron/wisman/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/wisman/kill_process_timeout.sh
+#*/50 * * * * /home/ubuntu/cron/wisman/update_token_bca.sh
+#0 5 * * * /home/ubuntu/cron/wisman/post_log_remittance.sh
+#05 5 * * * /home/ubuntu/cron/wisman/repost_remittance.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/wisman_e_invoice.lock /home/ubuntu/cron/wisman/e_invoice.sh
+0 21 * * * /home/ubuntu/cron/wisman/autoMailSP.sh
+*/59 * * * * /home/ubuntu/cron/wisman/updateTokenOpsigo.sh
+*/5 * * * * /usr/bin/flock -n /tmp/wisman_post_invoice.lock /home/ubuntu/cron/wisman/postInvoice.sh
+#0 1,12 * * 5 /home/ubuntu/cron/wisman/draftBilling.sh
+*/2 * * * * /home/ubuntu/cron/wisman/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/wisman/updateExpiredUser.sh
+2 5 * * * /home/ubuntu/cron/wisman/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/wisman/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/wisman/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/wisman/recuring.sh
+#0 0 * * * /home/ubuntu/cron/wisman/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh wisman recurring
+
+# -- My Tour
+*/2 * * * * /home/ubuntu/cron/mytour/repost.sh
+*/7 * * * * /home/ubuntu/cron/mytour/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/mytour/kill_process_timeout.sh
+#*/50 * * * * /home/ubuntu/cron/mytour/update_token_bca.sh
+#0 5 * * * /home/ubuntu/cron/mytour/post_log_remittance.sh
+#05 5 * * * /home/ubuntu/cron/mytour/repost_remittance.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/mytour_e_invoice.lock /home/ubuntu/cron/mytour/e_invoice.sh
+0 21 * * * /home/ubuntu/cron/mytour/autoMailSP.sh
+*/59 * * * * /home/ubuntu/cron/mytour/updateTokenOpsigo.sh
+*/5 * * * * /usr/bin/flock -n /tmp/mytour_post_invoice.lock /home/ubuntu/cron/mytour/postInvoice.sh
+#0 1,12 * * 5 /home/ubuntu/cron/mytour/draftBilling.sh
+*/2 * * * * /home/ubuntu/cron/mytour/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/mytour/updateExpiredUser.sh
+2 5 * * * /home/ubuntu/cron/mytour/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/mytour/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/mytour/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/mytour/recuring.sh
+#0 0 * * * /home/ubuntu/cron/mytour/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh mytours recurring
+*/10 1,4-5 * * * /usr/bin/flock -n /tmp/mytour_auto_billing.lock /home/ubuntu/cron/gateway.sh mytours auto_billing
+
+# -- Anta
+*/5 3-23,0-1 * * * /home/ubuntu/cron/anta/repost.sh 2>&1 >> /home/ubuntu/cronlog/repost_anta.log
+*/7 3-23,0-1 * * * /home/ubuntu/cron/anta/update_balance_trx.sh 2>&1 >> /home/ubuntu/cronlog/cronlog.log
+#*/1 6-18 * * * /home/ubuntu/cron/anta/kill_process_timeout.sh
+*/50 3-23,0-1 * * * /home/ubuntu/cron/anta/update_token_bca.sh
+0 5 * * * /home/ubuntu/cron/anta/post_log_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_anta_request.log
+10 5 * * * /home/ubuntu/cron/anta/repost_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_anta_repost.log
+*/5 21-23,0-1 * * * /usr/bin/flock -n /tmp/anta_e_invoice.lock /home/ubuntu/cron/anta/e_invoice.sh
+0 21 * * * /home/ubuntu/cron/anta/autoMailSP.sh
+*/59 3-23,0-1 * * * /home/ubuntu/cron/anta/updateTokenOpsigo.sh
+*/5 19-23,0-1 * * * /usr/bin/flock -n /tmp/anta_post_invoice.lock /home/ubuntu/cron/anta/postInvoice.sh
+#0 1,12 * * 5 /home/ubuntu/cron/anta/draftBilling.sh
+*/5 6-20 * * * /home/ubuntu/cron/anta/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/anta/updateExpiredUser.sh
+30 9 * * * /home/ubuntu/cron/anta/autoMailCRLimit.sh
+10 5 * * * /home/ubuntu/cron/anta/clearInactiveTempIssued.sh
+20 5 * * * /home/ubuntu/cron/anta/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/anta/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/anta/recuring.sh
+#0 0 * * * /home/ubuntu/cron/anta/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh anta recurring
+*/10 1,4-5 * * * /usr/bin/flock -n /tmp/anta_auto_billing.lock /home/ubuntu/cron/gateway.sh anta auto_billing
+*/10 22 * * * /usr/bin/flock -n /tmp/anta_repost_eror.lock /home/ubuntu/cron/gateway.sh anta repost_error
+
+# -- PSA
+*/2 * * * * /home/ubuntu/cron/psa/repost.sh
+*/7 * * * * /home/ubuntu/cron/psa/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/psa/kill_process_timeout.sh
+#*/50 * * * * /home/ubuntu/cron/psa/update_token_bca.sh
+#0 5 * * * /home/ubuntu/cron/psa/post_log_remittance.sh
+#05 5 * * * /home/ubuntu/cron/psa/repost_remittance.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/psa_e_invoice.lock /home/ubuntu/cron/psa/e_invoice.sh
+0 21 * * * /home/ubuntu/cron/psa/autoMailSP.sh
+*/59 * * * * /home/ubuntu/cron/psa/updateTokenOpsigo.sh
+*/5 * * * * /usr/bin/flock -n /tmp/psa_post_invoice.lock /home/ubuntu/cron/psa/postInvoice.sh
+#0 1,12 * * 5 /home/ubuntu/cron/psa/draftBilling.sh
+*/2 * * * * /home/ubuntu/cron/psa/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/psa/updateExpiredUser.sh
+2 5 * * * /home/ubuntu/cron/psa/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/psa/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/psa/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/psa/recuring.sh
+#0 0 * * * /home/ubuntu/cron/psa/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh psa recurring
+
+# -- RSP
+*/7 * * * * /home/ubuntu/cron/rsp/update_balance_trx.sh
+1 5 * * * /home/ubuntu/cron/rsp/updateExpiredUser.sh
+0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh rsp recurring
+
+# -- Gardi
+*/2 * * * * /home/ubuntu/cron/gardi/repost.sh
+*/7 * * * * /home/ubuntu/cron/gardi/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/gardi/kill_process_timeout.sh
+*/5 * * * * /usr/bin/flock -n /tmp/gardi_post_invoice.lock /home/ubuntu/cron/gardi/postInvoice.sh
+*/59 * * * * /home/ubuntu/cron/gardi/updateTokenOpsigo.sh
+*/2 * * * * /home/ubuntu/cron/gardi/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/gardi/updateExpiredUser.sh
+0 21 * * * /home/ubuntu/cron/gardi/autoMailSP.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/gardi_e_invoice.lock /home/ubuntu/cron/gardi/e_invoice.sh
+2 5 * * * /home/ubuntu/cron/gardi/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/gardi/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/gardi/billingFile.sh
+0 1 * * * /home/ubuntu/cron/gardi/recuring.sh
+#0 0 * * * /home/ubuntu/cron/gardi/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh gardi recurring
+#*/5 * * * * /home/ubuntu/cron/gateway.sh qa2 auto_summary
+
+# -- Pij
+*/2 3-23,0-1 * * * /home/ubuntu/cron/pij/repost.sh
+*/7 3-23,0-1 * * * /home/ubuntu/cron/pij/update_balance_trx.sh
+#*/1 6-18 * * * /home/ubuntu/cron/pij/kill_process_timeout.sh
+*/5 3-23,0-1 * * * /usr/bin/flock -n /tmp/pij_post_invoice.lock /home/ubuntu/cron/pij/postInvoice.sh
+*/59 3-23,0-1 * * * /home/ubuntu/cron/pij/updateTokenOpsigo.sh
+*/2 6-18 * * * /home/ubuntu/cron/pij/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/pij/updateExpiredUser.sh
+0 21 * * * /home/ubuntu/cron/pij/autoMailSP.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/pij_e_invoice.lock /home/ubuntu/cron/pij/e_invoice.sh
+1 5 * * * /home/ubuntu/cron/pij/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/pij/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/pij/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/pij/recuring.sh
+#0 0 * * * /home/ubuntu/cron/pij/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh pij recurring
+
+# -- Agi
+*/2 3-23,0-1 * * * /home/ubuntu/cron/agi/repost.sh
+#*/7 3-23,0-1 * * * /home/ubuntu/cron/agi/update_balance_trx.sh
+#*/1 6-18 * * * /home/ubuntu/cron/agi/kill_process_timeout.sh
+#*/5 3-23,0-1 * * * /home/ubuntu/cron/agi/postInvoice.sh
+#*/59 3-23,0-1 * * * /home/ubuntu/cron/agi/updateTokenOpsigo.sh
+*/2 6-18 * * * /home/ubuntu/cron/agi/updatePrintNoHardCopy.sh
+#0 21 * * * /home/ubuntu/cron/agi/updateExpiredUser.sh
+#0 21 * * * /home/ubuntu/cron/agi/autoMailSP.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/agi_e_invoice.lock /home/ubuntu/cron/agi/e_invoice.sh
+1 5 * * * /home/ubuntu/cron/agi/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/agi/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/agi/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/agi/recuring.sh
+#0 0 * * * /home/ubuntu/cron/agi/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh agi recurring
+*/10 1,4-5 * * * /usr/bin/flock -n /tmp/agi_auto_billing.lock /home/ubuntu/cron/gateway.sh agi auto_billing
+
+# -- global wisata
+*/2 3-23,0-1 * * * /home/ubuntu/cron/globalwisata/repost.sh
+#*/2 * * * * /home/ubuntu/cron/globalwisata/repost.sh
+*/7 3-23,0-1 * * * /home/ubuntu/cron/globalwisata/update_balance_trx.sh
+#*/1 6-18 * * * /home/ubuntu/cron/globalwisata/kill_process_timeout.sh
+*/5 3-23,0-1 * * * /usr/bin/flock -n /tmp/glowis_post_invoice.lock /home/ubuntu/cron/globalwisata/postInvoice.sh
+*/59 3-23,0-1 * * * /home/ubuntu/cron/globalwisata/updateTokenOpsigo.sh
+*/2 6-18 * * * /home/ubuntu/cron/globalwisata/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/globalwisata/updateExpiredUser.sh
+0 21 * * * /home/ubuntu/cron/globalwisata/autoMailSP.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/glowis_e_invoice.lock /home/ubuntu/cron/globalwisata/e_invoice.sh
+1 5 * * * /home/ubuntu/cron/globalwisata/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/globalwisata/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/globalwisata/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/globalwisata/recuring.sh
+#0 0 * * * /home/ubuntu/cron/globalwisata/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh globalwisata recurring
+*/10 1,4-5 * * * /usr/bin/flock -n /tmp/globalwisata_auto_billing.lock /home/ubuntu/cron/gateway.sh globalwisata auto_billing
+
+# -- kia xxx harmoni
+*/2 3-23,0-1 * * * /home/ubuntu/cron/kiaxxxharmoni/repost.sh
+#*/2 * * * * /home/ubuntu/cron/kiaxxxharmoni/repost.sh
+*/7 3-23,0-1 * * * /home/ubuntu/cron/kiaxxxharmoni/update_balance_trx.sh
+#*/1 6-18 * * * /home/ubuntu/cron/kiaxxxharmoni/kill_process_timeout.sh
+*/5 3-23,0-1 * * * /usr/bin/flock -n /tmp/kiaxxx_post_invoice.lock /home/ubuntu/cron/kiaxxxharmoni/postInvoice.sh
+*/59 3-23,0-1 * * * /home/ubuntu/cron/kiaxxxharmoni/updateTokenOpsigo.sh
+*/2 6-18 * * * /home/ubuntu/cron/kiaxxxharmoni/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/kiaxxxharmoni/updateExpiredUser.sh
+0 21 * * * /home/ubuntu/cron/kiaxxxharmoni/autoMailSP.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/kiaxxx_e_invoice.lock /home/ubuntu/cron/kiaxxxharmoni/e_invoice.sh
+1 5 * * * /home/ubuntu/cron/kiaxxxharmoni/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/kiaxxxharmoni/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/kiaxxxharmoni/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/kiaxxxharmoni/recuring.sh
+#0 0 * * * /home/ubuntu/cron/kiaxxxharmoni/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh kiaxxx recurring
+
+# -- hits travel
+#*/2 3-23,0-1 * * * /home/ubuntu/cron/hitstravel/repost.sh
+#*/2 * * * * /home/ubuntu/cron/hitstravel/repost.sh
+#*/7 3-23,0-1 * * * /home/ubuntu/cron/hitstravel/update_balance_trx.sh
+#*/1 6-18 * * * /home/ubuntu/cron/hitstravel/kill_process_timeout.sh
+#*/5 3-23,0-1 * * * /home/ubuntu/cron/hitstravel/postInvoice.sh
+#*/59 3-23,0-1 * * * /home/ubuntu/cron/hitstravel/updateTokenOpsigo.sh
+#*/2 6-18 * * * /home/ubuntu/cron/hitstravel/updatePrintNoHardCopy.sh
+#0 21 * * * /home/ubuntu/cron/hitstravel/updateExpiredUser.sh
+#0 21 * * * /home/ubuntu/cron/hitstravel/autoMailSP.sh
+#*/5 22-23,0-3 * * * /home/ubuntu/cron/hitstravel/e_invoice.sh
+#0 0 * * * /home/ubuntu/cron/hitstravel/clearInactiveTempIssued.sh
+
+# -- aneka tours
+*/2 3-23,0-1 * * * /home/ubuntu/cron/aneka/repost.sh
+#*/2 * * * * /home/ubuntu/cron/aneka/repost.sh
+*/7 3-23,0-1 * * * /home/ubuntu/cron/aneka/update_balance_trx.sh
+#*/1 6-18 * * * /home/ubuntu/cron/aneka/kill_process_timeout.sh
+*/5 3-23,0-1 * * * /usr/bin/flock -n /tmp/aneka_post_invoice.lock /home/ubuntu/cron/aneka/postInvoice.sh
+*/59 3-23,0-1 * * * /home/ubuntu/cron/aneka/updateTokenOpsigo.sh
+*/2 6-18 * * * /home/ubuntu/cron/aneka/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/aneka/updateExpiredUser.sh
+0 21 * * * /home/ubuntu/cron/aneka/autoMailSP.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/aneka_e_invoice.lock /home/ubuntu/cron/aneka/e_invoice.sh
+1 5 * * * /home/ubuntu/cron/aneka/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/aneka/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/aneka/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/aneka/recuring.sh
+#0 0 * * * /home/ubuntu/cron/aneka/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh aneka recurring
+
+# -- konverm tours
+*/2 3-23,0-1 * * * /home/ubuntu/cron/konverm/repost.sh
+#*/2 * * * * /home/ubuntu/cron/konverm/repost.sh
+*/7 3-23,0-1 * * * /home/ubuntu/cron/konverm/update_balance_trx.sh
+*/1 6-18 * * * /home/ubuntu/cron/konverm/kill_process_timeout.sh
+#*/5 3-23,0-1 * * * /home/ubuntu/cron/konverm/postInvoice.sh
+#*/59 3-23,0-1 * * * /home/ubuntu/cron/konverm/updateTokenOpsigo.sh
+*/2 6-18 * * * /home/ubuntu/cron/konverm/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/konverm/updateExpiredUser.sh
+#0 21 * * * /home/ubuntu/cron/konverm/autoMailSP.sh
+#*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/konverm_e_invoice.lock /home/ubuntu/cron/konverm/e_invoice.sh
+1 5 * * * /home/ubuntu/cron/konverm/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/konverm/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/konverm/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/konverm/recuring.sh
+#0 0 * * * /home/ubuntu/cron/konverm/updateStatusAutoPrintBilling.sh
+#*/10 1,4-5 * * * /usr/bin/flock -n /tmp/konverm_auto_billing.lock /home/ubuntu/cron/gateway.sh konverm auto_billing
+
+# -- mytrip tours
+*/2 3-23,0-1 * * * /home/ubuntu/cron/mytrip/repost.sh
+#*/2 * * * * /home/ubuntu/cron/mytrip/repost.sh
+*/7 3-23,0-1 * * * /home/ubuntu/cron/mytrip/update_balance_trx.sh
+*/1 6-18 * * * /home/ubuntu/cron/mytrip/kill_process_timeout.sh
+#*/5 3-23,0-1 * * * /home/ubuntu/cron/mytrip/postInvoice.sh
+#*/59 3-23,0-1 * * * /home/ubuntu/cron/mytrip/updateTokenOpsigo.sh
+*/2 6-18 * * * /home/ubuntu/cron/mytrip/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/mytrip/updateExpiredUser.sh
+#0 21 * * * /home/ubuntu/cron/mytrip/autoMailSP.sh
+#*/5 22-23,0-3 * * * /home/ubuntu/cron/mytrip/e_invoice.sh
+1 5 * * * /home/ubuntu/cron/mytrip/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/mytrip/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/mytrip/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/mytrip/recuring.sh
+#0 0 * * * /home/ubuntu/cron/mytrip/updateStatusAutoPrintBilling.sh
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh mytrip recurring
+
+# -- jontru
+*/2 3-23,0-1 * * * /home/ubuntu/cron/jontru/repost.sh
+#*/2 * * * * /home/ubuntu/cron/jontru/repost.sh
+*/7 3-23,0-1 * * * /home/ubuntu/cron/jontru/update_balance_trx.sh
+*/1 6-18 * * * /home/ubuntu/cron/jontru/kill_process_timeout.sh
+*/5 3-23,0-1 * * * /usr/bin/flock -n /tmp/jontru_post_invoice.lock /home/ubuntu/cron/jontru/postInvoice.sh
+*/59 3-23,0-1 * * * /home/ubuntu/cron/jontru/updateTokenOpsigo.sh
+*/2 6-18 * * * /home/ubuntu/cron/jontru/updatePrintNoHardCopy.sh
+0 21 * * * /home/ubuntu/cron/jontru/updateExpiredUser.sh
+0 21 * * * /home/ubuntu/cron/jontru/autoMailSP.sh
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/jontru_e_invoice.lock /home/ubuntu/cron/jontru/e_invoice.sh
+1 5 * * * /home/ubuntu/cron/jontru/clearInactiveTempIssued.sh
+2 5 * * * /home/ubuntu/cron/jontru/clearSharedFolderOpsigo.sh
+30 2 * * * /home/ubuntu/cron/jontru/downloadFtpToS3Kai.sh
+0 3 * * * /home/ubuntu/cron/jontru/syncFileToOpsifinKai.sh
+#*/10 * * * * /home/ubuntu/cron/jontru/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/jontru/recuring.sh
+#0 0 * * * /home/ubuntu/cron/jontru/updateStatusAutoPrintBilling.sh
+0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh jontru kcic_email
+1-59/5 * * * * /bin/bash /home/ubuntu/cron/gateway.sh jontru repost_error
+#*/5 * * * * /home/ubuntu/cron/gateway.sh jontru auto_summary
+
+# -- Golden Nusa Sejahtera
+*/6 * * * * /home/ubuntu/cron/gns/repost.sh
+*/7 * * * * /home/ubuntu/cron/gns/update_balance_trx.sh
+#*/1 * * * * /home/ubuntu/cron/gns/kill_process_timeout.sh
+*/50 * * * * /home/ubuntu/cron/gns/update_token_bca.sh
+0 5 * * * /home/ubuntu/cron/gns/post_log_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_gns_request.log
+10 5 * * * /home/ubuntu/cron/gns/repost_remittance.sh 2>&1 >> /home/ubuntu/cronlog/bca_gns_repost.log
+*/59 * * * * /home/ubuntu/cron/gns/updateTokenOpsigo.sh
+*/5 * * * * /usr/bin/flock -n /tmp/gns_post_invoice.lock /home/ubuntu/cron/gns/postInvoice.sh
+*/5 12-13,18-19,0-3 * * * /usr/bin/flock -n /tmp/gns_e_invoice.lock /home/ubuntu/cron/gns/e_invoice.sh
+*/2 * * * * /home/ubuntu/cron/gns/updatePrintNoHardCopy.sh
+1 5 * * * /home/ubuntu/cron/gns/updateExpiredUser.sh
+2 5 * * * /home/ubuntu/cron/gns/clearInactiveTempIssued.sh
+3 5 * * * /home/ubuntu/cron/gns/clearSharedFolderOpsigo.sh
+#*/10 * * * * /home/ubuntu/cron/gns/billingFile.sh
+#0 1 * * * /home/ubuntu/cron/gns/recuring.sh
+#0 0 * * * /home/ubuntu/cron/gns/updateStatusAutoPrintBilling.sh
+0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh gns recurring
+#*/5 * * * * /home/ubuntu/cron/gateway.sh gns auto_summary
+
+# -- Kiable
+*/5 * * * * /home/ubuntu/cron/gateway.sh kiable repost
+*/7 * * * * /home/ubuntu/cron/gateway.sh kiable update_balance_trx
+#*/1 * * * * /home/ubuntu/cron/gateway.sh kiable kill_process_timeout
+#*/50 * * * * /home/ubuntu/cron/kiable/update_token_bca.sh
+#0 5 * * * /home/ubuntu/cron/gateway.sh kiable request_bca_api
+#10 5 * * * /home/ubuntu/cron/gateway.sh kiable repost_bca_api
+#*/59 * * * * /home/ubuntu/cron/kiable/updateTokenOpsigo.sh
+#*/5 * * * * /home/ubuntu/cron/gateway.sh kiable post_invoice_to_opsigo
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/kiable_e_invoice.lock /home/ubuntu/cron/gateway.sh kiable e_invoice
+*/2 * * * * /home/ubuntu/cron/gateway.sh kiable update_print_no_hardcopy
+#0 0 * * * /home/ubuntu/cron/gateway.sh kiable update_expired_user
+#0 0 * * * /home/ubuntu/cron/gateway.sh kiable clear_inactive_temp_issued
+#0 0 * * * /home/ubuntu/cron/gateway.sh kiable clear_shared_folder_opsigo
+#*/10 * * * * /home/ubuntu/cron/gateway.sh kiable billing_file
+#0 1 * * * /home/ubuntu/cron/gateway.sh kiable recurring
+#0 0 * * * /home/ubuntu/cron/gateway.sh kiable update_status_auto_print_billing
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh kiable recurring
+
+# -- Bravo
+*/5 * * * * /home/ubuntu/cron/gateway.sh bravo repost
+*/7 * * * * /home/ubuntu/cron/gateway.sh bravo update_balance_trx
+#*/1 * * * * /home/ubuntu/cron/gateway.sh bravo kill_process_timeout
+#*/50 * * * * /home/ubuntu/cron/bravo/update_token_bca.sh
+#0 5 * * * /home/ubuntu/cron/gateway.sh bravo request_bca_api
+#10 5 * * * /home/ubuntu/cron/gateway.sh bravo repost_bca_api
+#*/59 * * * * /home/ubuntu/cron/bravo/updateTokenOpsigo.sh
+#*/5 * * * * /home/ubuntu/cron/gateway.sh bravo post_invoice_to_opsigo
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/bravo_e_invoice.lock /home/ubuntu/cron/gateway.sh bravo e_invoice
+*/2 * * * * /home/ubuntu/cron/gateway.sh bravo update_print_no_hardcopy
+1 5 * * * /home/ubuntu/cron/gateway.sh bravo update_expired_user
+2 5 * * * /home/ubuntu/cron/gateway.sh bravo clear_inactive_temp_issued
+3 5 * * * /home/ubuntu/cron/gateway.sh bravo clear_shared_folder_opsigo
+#*/10 * * * * /home/ubuntu/cron/gateway.sh bravo billing_file
+#0 1 * * * /home/ubuntu/cron/gateway.sh bravo recurring
+#0 0 * * * /home/ubuntu/cron/gateway.sh bravo update_status_auto_print_billing
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh bravo recurring
+*/10 1,4-5 * * * /usr/bin/flock -n /tmp/bravo_auto_billing.lock /home/ubuntu/cron/gateway.sh bravo auto_billing
+
+# -- Altorina
+*/5 * * * * /home/ubuntu/cron/gateway.sh altorina repost
+*/7 * * * * /home/ubuntu/cron/gateway.sh altorina update_balance_trx
+#*/1 * * * * /home/ubuntu/cron/gateway.sh altorina kill_process_timeout
+#*/50 * * * * /home/ubuntu/cron/altorina/update_token_bca.sh
+#0 5 * * * /home/ubuntu/cron/gateway.sh altorina request_bca_api
+#10 5 * * * /home/ubuntu/cron/gateway.sh altorina repost_bca_api
+#*/59 * * * * /home/ubuntu/cron/altorina/updateTokenOpsigo.sh
+#*/5 * * * * /home/ubuntu/cron/gateway.sh altorina post_invoice_to_opsigo
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/altorina_e_invoice.lock /home/ubuntu/cron/gateway.sh altorina e_invoice
+*/2 * * * * /home/ubuntu/cron/gateway.sh altorina update_print_no_hardcopy
+1 5 * * * /home/ubuntu/cron/gateway.sh altorina update_expired_user
+2 5 * * * /home/ubuntu/cron/gateway.sh altorina clear_inactive_temp_issued
+3 5 * * * /home/ubuntu/cron/gateway.sh altorina clear_shared_folder_opsigo
+#*/10 * * * * /home/ubuntu/cron/gateway.sh altorina billing_file
+#0 1 * * * /home/ubuntu/cron/gateway.sh altorina recurring
+#0 0 * * * /home/ubuntu/cron/gateway.sh altorina update_status_auto_print_billing
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh altorina recurring
+
+# -- Privela
+*/5 * * * * /home/ubuntu/cron/gateway.sh privela repost
+*/7 * * * * /home/ubuntu/cron/gateway.sh privela update_balance_trx
+#*/1 * * * * /home/ubuntu/cron/gateway.sh privela kill_process_timeout
+#*/50 * * * * /home/ubuntu/cron/privela/update_token_bca.sh
+#0 5 * * * /home/ubuntu/cron/gateway.sh privela request_bca_api
+#10 5 * * * /home/ubuntu/cron/gateway.sh privela repost_bca_api
+#*/59 * * * * /home/ubuntu/cron/altorina/updateTokenOpsigo.sh
+#*/5 * * * * /home/ubuntu/cron/gateway.sh privela post_invoice_to_opsigo
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/privela_e_invoice.lock /home/ubuntu/cron/gateway.sh privela e_invoice
+*/2 * * * * /home/ubuntu/cron/gateway.sh privela update_print_no_hardcopy
+1 5 * * * /home/ubuntu/cron/gateway.sh privela update_expired_user
+2 5 * * * /home/ubuntu/cron/gateway.sh privela clear_inactive_temp_issued
+3 5 * * * /home/ubuntu/cron/gateway.sh privela clear_shared_folder_opsigo
+#*/10 * * * * /home/ubuntu/cron/gateway.sh privela billing_file
+#0 1 * * * /home/ubuntu/cron/gateway.sh privela recurring
+#0 0 * * * /home/ubuntu/cron/gateway.sh altorina update_status_auto_print_billing
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh privela recurring
+#*/5 * * * * /home/ubuntu/cron/gateway.sh privela auto_summary
+
+# -- Excape
+*/5 * * * * /home/ubuntu/cron/gateway.sh excape repost
+*/7 * * * * /home/ubuntu/cron/gateway.sh excape update_balance_trx
+#*/1 * * * * /home/ubuntu/cron/gateway.sh excape kill_process_timeout
+#0 5 * * * /home/ubuntu/cron/gateway.sh excape request_bca_api
+#10 5 * * * /home/ubuntu/cron/gateway.sh excape repost_bca_api
+#*/59 * * * * /home/ubuntu/cron/altorina/updateTokenOpsigo.sh
+#*/5 * * * * /home/ubuntu/cron/gateway.sh excape post_invoice_to_opsigo
+*/5 22-23,0-3 * * * /usr/bin/flock -n /tmp/excape_e_invoice.lock /home/ubuntu/cron/gateway.sh excape e_invoice
+*/2 * * * * /home/ubuntu/cron/gateway.sh excape update_print_no_hardcopy
+1 5 * * * /home/ubuntu/cron/gateway.sh excape update_expired_user
+2 5 * * * /home/ubuntu/cron/gateway.sh excape clear_inactive_temp_issued
+3 5 * * * /home/ubuntu/cron/gateway.sh excape clear_shared_folder_opsigo
+#*/10 * * * * /home/ubuntu/cron/gateway.sh excape billing_file
+#0 1 * * * /home/ubuntu/cron/gateway.sh excape recurring
+#0 0 * * * /home/ubuntu/cron/gateway.sh altorina update_status_auto_print_billing
+#0 3 * * * /bin/bash /home/ubuntu/cron/gateway.sh excape recurring
+#*/5 * * * * /home/ubuntu/cron/gateway.sh excape auto_summary
