@@ -17,7 +17,7 @@ blok kode kepada pengguna.
 | Melihat arsitektur ringkas | [Architecture](architecture.md) |
 | Menjalankan scheduler di WSL + aaPanel | [Runbook aaPanel](runbook-scheduler-aapanel.md) |
 | Menjalankan scheduler di VPS production | [Runbook VPS](runbook-scheduler-vps.md) |
-| Deploy VPS 2 GB: Nginx + PHP 8.4-FPM + MySQL lokal, driver direct | [Deployment VPS 2 GB](deployment-vps-nginx-2gb.md) |
+| Deploy VPS 2 GB: Ubuntu 26.04 + Nginx + PHP 8.5-FPM + MySQL lokal, driver direct | [Deployment VPS 2 GB](deployment-vps-nginx-2gb.md) |
 | Mengoperasikan Direct HTTP | [Direct HTTP Operations](direct-http-operations.md) |
 | Melihat bukti pengujian | [Direct HTTP Validation](direct-http-validation.md) |
 | Menangani operasi umum | [Operations Runbook](operations.md) |

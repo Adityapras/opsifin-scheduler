@@ -1,8 +1,9 @@
-# Deployment VPS 2 GB — Nginx + PHP 8.4-FPM + MySQL Lokal
+# Deployment VPS 2 GB — Nginx + PHP 8.5-FPM + MySQL Lokal
 
 Panduan step by step memasang Opsifin Scheduler di **satu VPS RAM 2 GB**
-(Ubuntu 24.04 LTS) dengan **Nginx**, **PHP 8.4-FPM**, dan **MySQL 8.0 di server
-yang sama**, memakai driver eksekusi **direct** (tanpa Redis/Horizon).
+(Ubuntu 26.04 LTS) dengan **Nginx**, **PHP 8.5-FPM** bawaan Ubuntu, dan
+**MySQL di server yang sama**, memakai driver eksekusi **direct** (tanpa
+Redis/Horizon).
 
 Dokumen ini melengkapi, bukan menggantikan:
 
@@ -16,6 +17,20 @@ Dokumen ini melengkapi, bukan menggantikan:
 Ditulis 7 Oktober 2026. Angka memori di bawah adalah **estimasi** dari ukuran
 container development (idle) dan belum diukur di VPS target; ukur ulang saat
 pilot.
+
+Diperbarui 8 Oktober 2026 dari Ubuntu 24.04 + PHP 8.4 ke **Ubuntu 26.04 +
+PHP 8.5**:
+
+- PPA `ondrej/php` belum menyediakan build untuk Ubuntu 26.04 (`resolute`,
+  404). Memaksa PPA dengan build `noble` (24.04) gagal karena dependency
+  library tidak tersedia (`libicu74`, `libxml2`, `libzip4t64`). Jangan
+  memaksanya.
+- PHP 8.5 bawaan Ubuntu dipakai. Test suite lulus di PHP 8.5.11 (8 Okt 2026:
+  172 passed, 1 skipped = capacity test opt-in, tanpa deprecation warning;
+  container sekali pakai, sqlite `:memory:`). Belum diuji: PHP-FPM 8.5 + Nginx
+  sungguhan, MySQL target, dan beban nyata. Itu diverifikasi lewat smoke test
+  (langkah 16) dan pilot.
+- Development lokal masih PHP 8.4. Kode sudah lulus di keduanya.
 
 ---
 
@@ -43,9 +58,9 @@ perintah destruktif. Di server ini:
 ## 1. Gambaran akhir
 
 ```text
-Internet ──HTTPS──> Nginx :443 ──fastcgi──> PHP 8.4-FPM (www-data) ──> Laravel/Filament
+Internet ──HTTPS──> Nginx :443 ──fastcgi──> PHP 8.5-FPM (www-data) ──> Laravel/Filament
                                                                           │
-cron (1 menit) ──> artisan schedule:run ──> jobs:dispatch-due ──> runs ───┤──> MySQL 8.0 (lokal)
+cron (1 menit) ──> artisan schedule:run ──> jobs:dispatch-due ──> runs ───┤──> MySQL (lokal)
                                                                           │
 systemd: opsifin-direct-executor ──> jobs:work-direct (pool 30) ──HTTP──> endpoint Client
 ```
@@ -55,7 +70,7 @@ Budget RAM (estimasi):
 | Komponen | Perkiraan |
 | --- | ---: |
 | OS + agent (contoh VM Google Cloud) | ~300 MB |
-| MySQL 8.0 (buffer pool 256 MB, perf schema off) | 350–450 MB |
+| MySQL (buffer pool 256 MB, perf schema off) | 350–450 MB |
 | Nginx | ~15 MB |
 | PHP-FPM (`pm=ondemand`, max 5 child × ~60–90 MB) | 0–450 MB |
 | Direct executor (`jobs:work-direct`) | ~80–100 MB |
@@ -73,7 +88,7 @@ Isi sebelum mulai (jangan simpan password di dokumen ini):
 
 | Item | Contoh |
 | --- | --- |
-| OS | Ubuntu 24.04 LTS, 2 vCPU, RAM 2 GB, disk SSD ≥ 25 GB |
+| OS | Ubuntu 26.04 LTS, 2 vCPU, RAM 2 GB, disk SSD ≥ 25 GB |
 | Domain | `scheduler.example.com` (A record → IP VPS) |
 | Service user | `opsifin_admin` |
 | Path aplikasi | `/var/www/opsifin-scheduler` |
@@ -145,29 +160,40 @@ sudo chmod 700 /var/backups/opsifin-scheduler
 
 ---
 
-## 4. PHP 8.4-FPM
+## 4. PHP 8.5-FPM
 
 ### 4.1 Install
 
-Ubuntu 24.04 bawaan PHP 8.3, jadi pakai PPA `ondrej/php`:
+PHP 8.5 diambil dari repo bawaan Ubuntu 26.04, **tanpa** PPA. Bila PPA
+`ondrej/php` pernah ditambahkan, hapus dulu supaya `apt update` bersih:
 
 ```bash
-sudo add-apt-repository -y ppa:ondrej/php
+grep -rl ondrej /etc/apt/sources.list.d/   # harus kosong; bila ada, sudo rm file tersebut
 sudo apt update
-sudo apt -y install php8.4-fpm php8.4-cli php8.4-common php8.4-mysql \
-  php8.4-curl php8.4-mbstring php8.4-xml php8.4-zip php8.4-bcmath \
-  php8.4-intl php8.4-gd php8.4-opcache php8.4-readline
-php8.4 -v
-php8.4 -m | grep -E -i 'pdo_mysql|curl|mbstring|intl|gd|pcntl|posix|opcache|zip|bcmath'
+apt-cache search --names-only '^php8\.5-' | sort
 ```
 
-`pcntl` dan `posix` sudah termasuk di `php8.4-cli`; keduanya dipakai
-`jobs:work-direct` untuk menangani SIGTERM. Ekstensi `redis` tidak diperlukan.
+```bash
+sudo apt -y install php8.5-fpm php8.5-cli php8.5-common php8.5-mysql \
+  php8.5-curl php8.5-mbstring php8.5-xml php8.5-zip php8.5-bcmath \
+  php8.5-intl php8.5-gd php8.5-readline
+php8.5 -v
+php8.5 -m | grep -E -i 'pdo_mysql|curl|mbstring|intl|gd|pcntl|posix|opcache|zip|bcmath'
+```
+
+- Sejak PHP 8.5, OPcache sudah built-in di core, jadi biasanya tidak ada paket
+  `php8.5-opcache`. Bila paket itu muncul di `apt-cache search`, tambahkan.
+  Yang wajib: `opcache` tampil di `php8.5 -m`.
+- `intl` **wajib**. Tanpa `intl`, semua tabel Filament error
+  (`Number::format`); di test tanpa `intl`, 33 test gagal.
+- `pcntl` dan `posix` sudah termasuk di `php8.5-cli`; keduanya dipakai
+  `jobs:work-direct` untuk menangani SIGTERM. Ekstensi `redis` tidak diperlukan
+  (Redis, bila dipakai, lewat `predis`).
 
 ### 4.2 php.ini (FPM dan CLI)
 
 ```bash
-sudo tee /etc/php/8.4/mods-available/opsifin.ini >/dev/null <<'EOF'
+sudo tee /etc/php/8.5/mods-available/opsifin.ini >/dev/null <<'EOF'
 ; Opsifin Scheduler — VPS 2 GB
 memory_limit = 256M
 max_execution_time = 120
@@ -183,21 +209,21 @@ opcache.interned_strings_buffer = 16
 opcache.max_accelerated_files = 20000
 opcache.validate_timestamps = 0
 EOF
-sudo phpenmod -v 8.4 opsifin
+sudo phpenmod -v 8.5 opsifin
 ```
 
 `opcache.validate_timestamps = 0` berarti setiap deploy **wajib**
-`systemctl reload php8.4-fpm` (langkah 15).
+`systemctl reload php8.5-fpm` (langkah 15).
 
 ### 4.3 Pool FPM hemat memori
 
 ```bash
-sudo cp /etc/php/8.4/fpm/pool.d/www.conf /etc/php/8.4/fpm/pool.d/www.conf.orig
-sudo tee /etc/php/8.4/fpm/pool.d/www.conf >/dev/null <<'EOF'
+sudo cp /etc/php/8.5/fpm/pool.d/www.conf /etc/php/8.5/fpm/pool.d/www.conf.orig
+sudo tee /etc/php/8.5/fpm/pool.d/www.conf >/dev/null <<'EOF'
 [www]
 user = www-data
 group = www-data
-listen = /run/php/php8.4-fpm.sock
+listen = /run/php/php8.5-fpm.sock
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0660
@@ -212,8 +238,8 @@ request_terminate_timeout = 120s
 catch_workers_output = yes
 EOF
 sudo usermod -aG opsifin_admin www-data
-sudo php-fpm8.4 -t && sudo systemctl restart php8.4-fpm
-sudo systemctl enable php8.4-fpm
+sudo php-fpm8.5 -t && sudo systemctl restart php8.5-fpm
+sudo systemctl enable php8.5-fpm
 ```
 
 ### 4.4 Composer
@@ -221,17 +247,22 @@ sudo systemctl enable php8.4-fpm
 ```bash
 cd /tmp
 curl -sS https://getcomposer.org/installer -o composer-setup.php
-sudo php8.4 composer-setup.php --install-dir=/usr/local/bin --filename=composer
+sudo php8.5 composer-setup.php --install-dir=/usr/local/bin --filename=composer
 composer --version
 ```
 
 ---
 
-## 5. MySQL 8.0 lokal
+## 5. MySQL lokal
 
 ### 5.1 Install dan amankan
 
+Pakai `mysql-server` bawaan Ubuntu 26.04. Cek versinya dulu; config 5.2
+berlaku untuk MySQL 8.0 maupun 8.4 (`binlog_format` hanya memunculkan warning
+deprecated di 8.4).
+
 ```bash
+apt policy mysql-server
 sudo apt -y install mysql-server
 sudo systemctl enable --now mysql
 sudo mysql_secure_installation   # hapus anonymous user, test DB, disable remote root
@@ -364,7 +395,7 @@ server {
     location = /robots.txt  { access_log off; log_not_found off; }
 
     location ~ \.php$ {
-        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+        fastcgi_pass unix:/run/php/php8.5-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
         include fastcgi_params;
         fastcgi_hide_header X-Powered-By;
@@ -457,7 +488,7 @@ cd /var/www/opsifin-scheduler
 sudo -u opsifin_admin cp .env.example .env
 sudo chown opsifin_admin:www-data .env
 sudo chmod 0640 .env
-sudo -u opsifin_admin php8.4 artisan key:generate --force
+sudo -u opsifin_admin php8.5 artisan key:generate --force
 sudo -u opsifin_admin nano .env
 ```
 
@@ -549,7 +580,7 @@ Hanya untuk instalasi baru tanpa data: jalankan langkah 9.1, lalu buat
 Administrator:
 
 ```bash
-sudo -u opsifin_admin php8.4 artisan cron:admin-create --email=<email-admin>
+sudo -u opsifin_admin php8.5 artisan cron:admin-create --email=<email-admin>
 ```
 
 ### 9.1 Migration — selalu lewat user migrator
@@ -558,10 +589,10 @@ Config belum di-cache saat ini, sehingga env override di bawah terbaca.
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo -u opsifin_admin php8.4 artisan config:clear
-sudo -u opsifin_admin php8.4 artisan migrate:status
+sudo -u opsifin_admin php8.5 artisan config:clear
+sudo -u opsifin_admin php8.5 artisan migrate:status
 sudo -u opsifin_admin env DB_USERNAME=opsifin_migrator DB_PASSWORD='<PASS_MIG>' \
-  php8.4 artisan migrate --force
+  php8.5 artisan migrate --force
 ```
 
 Hanya `migrate` (tanpa `fresh`/`refresh`/`reset`).
@@ -569,7 +600,7 @@ Hanya `migrate` (tanpa `fresh`/`refresh`/`reset`).
 ### 9.2 Verifikasi data
 
 ```bash
-sudo -u opsifin_admin php8.4 artisan tinker --execute='echo "clients=".App\Models\Client::count()." schedules=".App\Models\Schedule::count()." enabled=".App\Models\Schedule::where("is_enabled",true)->count();'
+sudo -u opsifin_admin php8.5 artisan tinker --execute='echo "clients=".App\Models\Client::count()." schedules=".App\Models\Schedule::count()." enabled=".App\Models\Schedule::where("is_enabled",true)->count();'
 ```
 
 Opsi A: `clients=33 schedules=687 enabled=0`.
@@ -580,10 +611,10 @@ Opsi A: `clients=33 schedules=687 enabled=0`.
 
 ```bash
 cd /var/www/opsifin-scheduler
-sudo -u opsifin_admin php8.4 artisan storage:link
-sudo -u opsifin_admin php8.4 artisan optimize
-sudo -u opsifin_admin php8.4 artisan filament:optimize
-sudo systemctl reload php8.4-fpm
+sudo -u opsifin_admin php8.5 artisan storage:link
+sudo -u opsifin_admin php8.5 artisan optimize
+sudo -u opsifin_admin php8.5 artisan filament:optimize
+sudo systemctl reload php8.5-fpm
 ```
 
 Buka `https://scheduler.example.com/admin`, login, cek dashboard.
@@ -608,7 +639,7 @@ Requires=mysql.service
 User=opsifin_admin
 Group=www-data
 WorkingDirectory=/var/www/opsifin-scheduler
-ExecStart=/usr/bin/php8.4 artisan jobs:work-direct
+ExecStart=/usr/bin/php8.5 artisan jobs:work-direct
 Restart=always
 RestartSec=5
 # SIGTERM: request aktif diselesaikan, pending tetap untuk proses berikutnya.
@@ -624,7 +655,7 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now opsifin-direct-executor
 sudo systemctl status opsifin-direct-executor --no-pager
-sudo -u opsifin_admin php8.4 artisan jobs:direct-status
+sudo -u opsifin_admin php8.5 artisan jobs:direct-status
 ```
 
 `TimeoutStopSec=90` lebih besar dari timeout HTTP 60 detik supaya request
@@ -639,7 +670,7 @@ sudo tee /etc/cron.d/opsifin-scheduler >/dev/null <<'EOF'
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-* * * * * opsifin_admin cd /var/www/opsifin-scheduler && /usr/bin/php8.4 artisan schedule:run >> /var/log/opsifin-scheduler/scheduler.log 2>&1
+* * * * * opsifin_admin cd /var/www/opsifin-scheduler && /usr/bin/php8.5 artisan schedule:run >> /var/log/opsifin-scheduler/scheduler.log 2>&1
 EOF
 sudo chmod 644 /etc/cron.d/opsifin-scheduler
 sudo systemctl restart cron
@@ -650,7 +681,7 @@ pukul 03:00, dan `telescope:prune` pukul 02:30. Dua menit kemudian:
 
 ```bash
 tail -n 20 /var/log/opsifin-scheduler/scheduler.log
-sudo -u opsifin_admin php8.4 artisan schedule:list
+sudo -u opsifin_admin php8.5 artisan schedule:list
 ```
 
 ---
@@ -742,17 +773,17 @@ Latih prosedur ini sekali sebelum go-live.
 ```bash
 cd /var/www/opsifin-scheduler
 sudo /usr/local/sbin/opsifin-db-backup                 # backup dulu, selalu
-sudo -u opsifin_admin php8.4 artisan down
+sudo -u opsifin_admin php8.5 artisan down
 sudo -u opsifin_admin git pull --ff-only
 sudo -u opsifin_admin composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 # upload public/build hasil build commit yang sama (langkah 7.3)
-sudo -u opsifin_admin php8.4 artisan config:clear
-sudo -u opsifin_admin env DB_USERNAME=opsifin_migrator DB_PASSWORD='<PASS_MIG>' php8.4 artisan migrate --force
-sudo -u opsifin_admin php8.4 artisan optimize
-sudo -u opsifin_admin php8.4 artisan filament:optimize
-sudo systemctl reload php8.4-fpm
+sudo -u opsifin_admin php8.5 artisan config:clear
+sudo -u opsifin_admin env DB_USERNAME=opsifin_migrator DB_PASSWORD='<PASS_MIG>' php8.5 artisan migrate --force
+sudo -u opsifin_admin php8.5 artisan optimize
+sudo -u opsifin_admin php8.5 artisan filament:optimize
+sudo systemctl reload php8.5-fpm
 sudo systemctl restart opsifin-direct-executor
-sudo -u opsifin_admin php8.4 artisan up
+sudo -u opsifin_admin php8.5 artisan up
 ```
 
 Setelah mengubah `.env`: `optimize:clear`, `optimize`, reload FPM, restart
@@ -766,7 +797,7 @@ executor.
 | --- | --- | --- |
 | Web | buka `/admin`, login | dashboard tampil |
 | Health | `curl -I https://scheduler.example.com/up` | `200` |
-| Executor | `php8.4 artisan jobs:direct-status` | executor online, capacity 30 |
+| Executor | `php8.5 artisan jobs:direct-status` | executor online, capacity 30 |
 | Scheduler | `tail scheduler.log` | `Running scheduled tasks` tiap menit |
 | Schedule aktif | tinker count (9.2) | `enabled=0` sampai diputuskan |
 | Memori | `free -h`, `ps -eo rss,cmd --sort=-rss \| head` | available > 400 MB, swap ~0 |
@@ -796,7 +827,7 @@ endpoint itu disetujui sebagai harmless.
 
 | Gejala | Penyebab umum | Tindakan |
 | --- | --- | --- |
-| 502 Bad Gateway | FPM mati / socket salah | `systemctl status php8.4-fpm`, cek path socket di vhost |
+| 502 Bad Gateway | FPM mati / socket salah | `systemctl status php8.5-fpm`, cek path socket di vhost |
 | 500 setelah deploy | cache lama / permission | `optimize:clear`, ulangi 7.4, cek `storage/logs` |
 | JS Livewire 404 | blok `^~ /livewire-` hilang | cek vhost 6.3 |
 | Run `skipped` (missed start window) | endpoint lambat / executor mati | `jobs:direct-status`, `journalctl -u opsifin-direct-executor` |

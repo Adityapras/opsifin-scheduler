@@ -1,12 +1,49 @@
 # Current Handoff — Opsifin Scheduler
 
-Last updated: **7 Oktober 2026, Asia/Jakarta**
+Last updated: **8 Oktober 2026, Asia/Jakarta**
 
 Ini adalah memory utama lintas sesi. Baca file ini,
 [`../CLAUDE.md`](../CLAUDE.md), dan [`architecture.md`](architecture.md)
 sebelum melanjutkan.
 
 ## Status terbaru — Direct Bounded HTTP
+
+### Sesi 8 Oktober 2026 — VPS Ubuntu 26.04, pindah ke PHP 8.5
+
+- VPS target `vm-opsifin-bi` (GCE asia-southeast2) ternyata **Ubuntu 26.04
+  (`resolute`)**. PPA `ondrej/php` belum punya build `resolute` (404); build
+  `noble` gagal dependency (`libicu74`, `libxml2`, `libzip4t64` tidak
+  tersedia). User memutuskan memakai **PHP 8.5 bawaan Ubuntu**.
+- Test suite dijalankan di PHP 8.5.11 (container sekali pakai
+  `opsifin-php85-test:local`: `php:8.5-cli` + `intl pcntl zip bcmath pdo_mysql`
+  + `python3`, `--network none`, sqlite `:memory:`): **172 passed, 1 skipped**
+  (capacity test opt-in), tanpa deprecation warning. Tujuh test fixture
+  loopback yang gagal di image dev (tanpa `python3`) ikut lulus di sini.
+  Tanpa `intl`, 33 test gagal (`Number::format` di tabel Filament).
+- `composer.json` (`php ^8.3`) dan seluruh lock (Laravel 13.23, Filament 5.7.5,
+  Livewire 4.3.5, Symfony 8.1) mengizinkan PHP 8.5; tidak ada perubahan kode.
+- `deployment-vps-nginx-2gb.md` diperbarui ke Ubuntu 26.04 + PHP 8.5 (path
+  `/etc/php/8.5`, socket `php8.5-fpm.sock`, binary `/usr/bin/php8.5` di
+  systemd dan cron, tanpa PPA, tanpa paket `php8.5-opcache`, versi MySQL
+  bawaan dicek via `apt policy`). Index di `docs/README.md` ikut diubah.
+- **Instalasi VPS dikerjakan user sendiri** (Claude hanya memandu). Nilai di
+  server berbeda dari dokumen: service user `opsifinadmin`, path
+  `/var/www/html/opsifin-scheduler`, database `opsifin_scheduler`, user DB
+  `opsifin_app` / `opsifin_migrator` / `opsifin_ro` (read-only untuk SQLyog).
+  Tidak ada `ufw`; firewall lewat GCP. Akses sementara hanya lewat IAP tunnel
+  (Nginx `listen 127.0.0.1:80`, `APP_URL=http://localhost:8080`,
+  `SESSION_SECURE_COOKIE=false`, tanpa HTTPS). SQLyog lama butuh
+  `mysql_native_password = ON` di `zz-opsifin.cnf` (MySQL 8.4).
+- Masalah yang ditemui dan sudah diarahkan: unit systemd dan cron masih memakai
+  `opsifin_admin` (`status=217/USER`, dispatcher heartbeat hilang), grant
+  `opsifin_app` sempat menunjuk `opsifin_cron`, `Access denied` dari password
+  `.env` (saran: kutip tunggal + `config:clear`).
+- User melaporkan instalasi selesai, tetapi **output checklist verifikasi
+  (`jobs:direct-status`, `/up`, login panel, jumlah Schedule enabled) belum
+  dilihat**. Kalau DB VPS hasil restore dari dev, cek Schedule 2959 (QA2)
+  tidak ikut enabled di VPS, supaya tidak terkirim dobel.
+- **Belum terbukti:** beban nyata dan capacity di VPS. Development lokal masih
+  PHP 8.4. Perubahan docs sesi ini belum di-commit.
 
 ### Sesi 7 Oktober 2026 — database dev terhapus, restore, sync crontab
 
@@ -78,7 +115,7 @@ test. Container sudah di-recreate; config aktif `concurrency=30`.
 
 **Deploy VPS 2 GB.** Panduan baru
 [`deployment-vps-nginx-2gb.md`](deployment-vps-nginx-2gb.md): Nginx + PHP 8.4-FPM
-+ MySQL 8.0 lokal (binlog ON, user runtime tanpa DDL, user migrator terpisah),
++ MySQL 8.0 lokal (8 Okt: diubah ke Ubuntu 26.04 + PHP 8.5) (binlog ON, user runtime tanpa DDL, user migrator terpisah),
 driver direct via systemd, backup harian. Belum dijalankan di VPS mana pun.
 Belum di-commit.
 
